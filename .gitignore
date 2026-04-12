@@ -19,5 +19,14 @@ Thumbs.db
 # Prisma
 prisma/*.db
 
-# Flutter app (separate project)
-flutter_app/
+# Flutter build output
+flutter_app/build/
+flutter_app/.dart_tool/
+flutter_app/.gradle/
+flutter_app/8.14/
+flutter_app/ephemeral/
+flutter_app/noVersion/
+flutter_app/checksums/
+flutter_app/fileHashes/
+flutter_app/*.bin
+flutter_app/*.lock
