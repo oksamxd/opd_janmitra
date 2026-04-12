@@ -1,0 +1,324 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model opd_sessions {
+  session_id       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  member_id        String?  @db.Uuid
+  case_id          String?  @db.Uuid
+  opd_state        String   @default("NEW")
+  collected_inputs Json     @default("{}")
+  trigger_history  Json     @default("[]")
+  ai_history       Json     @default("[]")
+  is_active        Boolean  @default(true)
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  @@index([member_id])
+  @@index([is_active])
+}
+
+model cases {
+  case_id             String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  member_id           String
+  service_id          String
+  status              String?
+  description         String?
+  created_at          DateTime              @default(now())
+  members_member_id   String?               @db.Uuid
+  services_service_id String?               @db.Uuid
+  associate_id        String?               @db.Uuid
+  emergency_flag      Boolean               @default(false)
+  opd_state           String                @default("NEW")
+  triage_data         Json?
+  ai_interactions     ai_interactions[]     @relation("CaseAI")
+  appointments        appointments[]
+  case_documents      case_documents[]
+  case_services       case_services[]
+  case_status_history case_status_history[]
+  associate           associates?           @relation(fields: [associate_id], references: [associate_id])
+  members             members?              @relation(fields: [members_member_id], references: [member_id])
+  services            services?             @relation(fields: [services_service_id], references: [service_id])
+  episodes            episodes[]
+  prescriptions       prescriptions[]
+  referrals           referrals[]
+  test_orders         test_orders[]
+
+  @@index([member_id])
+  @@index([status])
+  @@index([opd_state])
+}
+
+model case_services {
+  case_service_id String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  case_id         String    @db.Uuid
+  service_name    String
+  service_type    String?
+  status          String    @default("PENDING")
+  provider_id     String?
+  scheduled_at    DateTime?
+  completed_at    DateTime?
+  outcome         Json?
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  case            cases     @relation(fields: [case_id], references: [case_id], onDelete: Cascade)
+
+  @@index([case_id])
+  @@index([status])
+}
+
+model case_events {
+  event_id   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  case_id    String   @db.Uuid
+  service_id String?  @db.Uuid
+  event_type String
+  actor_type String
+  actor_id   String?
+  payload    Json?
+  created_at DateTime @default(now())
+
+  @@index([case_id])
+  @@index([event_type])
+}
+
+model case_status_history {
+  history_id String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  case_id    String    @db.Uuid
+  old_status String?
+  new_status String?
+  changed_at DateTime? @default(now())
+  remarks    String?
+  cases      cases     @relation(fields: [case_id], references: [case_id], onDelete: Cascade)
+}
+
+model case_documents {
+  document_id   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  case_id       String    @db.Uuid
+  file_url      String
+  document_type String?
+  uploaded_at   DateTime? @default(now())
+  cases         cases     @relation(fields: [case_id], references: [case_id], onDelete: Cascade)
+}
+
+model ai_interactions {
+  interaction_id   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  case_id          String?   @db.Uuid
+  episode_id       String?   @db.Uuid
+  user_query       String
+  language         String?   @default("EN")
+  confidence_score Decimal?
+  created_at       DateTime? @default(now())
+  jana_response    Json
+  case             cases?    @relation("CaseAI", fields: [case_id], references: [case_id])
+  episode          episodes? @relation("EpisodeAI", fields: [episode_id], references: [episode_id])
+}
+
+model episodes {
+  episode_id      String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  case_id         String            @db.Uuid
+  episode_type    String?
+  status          String?           @default("PENDING")
+  started_at      DateTime?
+  completed_at    DateTime?
+  notes           String?
+  ai_interactions ai_interactions[] @relation("EpisodeAI")
+  episode_steps   episode_steps[]
+  cases           cases             @relation(fields: [case_id], references: [case_id], onDelete: Cascade)
+
+  @@index([case_id])
+}
+
+model episode_steps {
+  episode_step_id String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  episode_id      String        @db.Uuid
+  service_step_id String        @db.Uuid
+  status          String?       @default("NOT_STARTED")
+  started_at      DateTime?
+  completed_at    DateTime?
+  episodes        episodes      @relation(fields: [episode_id], references: [episode_id])
+  service_steps   service_steps @relation(fields: [service_step_id], references: [service_step_id])
+}
+
+model services {
+  service_id    String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  service_name  String
+  description   String?
+  cases         cases[]
+  service_steps service_steps[]
+}
+
+model service_steps {
+  service_step_id String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  service_id      String          @db.Uuid
+  step_name       String
+  step_order      Int?
+  episode_steps   episode_steps[]
+  services        services        @relation(fields: [service_id], references: [service_id])
+}
+
+model associates {
+  associate_id String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  full_name    String
+  role         String?
+  email        String?
+  created_at   DateTime       @default(now())
+  is_available Boolean        @default(true)
+  specialty    String?
+  appointments appointments[]
+  cases        cases[]
+}
+
+model members {
+  member_id         String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  full_name         String
+  email             String?
+  phone             String?
+  created_at        DateTime                 @default(now())
+  address           String?
+  date_of_birth     DateTime?
+  medical_record_id String?
+  cases             cases[]
+  medical_record    patient_medical_records?
+}
+
+model patient_medical_records {
+  record_id   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  member_id   String   @unique @db.Uuid
+  age         Int?
+  height      String?
+  weight      String?
+  blood_group String?
+  allergies   String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  member      members  @relation(fields: [member_id], references: [member_id], onDelete: Cascade)
+
+  @@index([member_id])
+}
+
+model appointments {
+  appointment_id   String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  case_id          String     @db.Uuid
+  doctor_id        String     @db.Uuid
+  slot_id          String?
+  appointment_type String     @default("CONSULTATION")
+  scheduled_at     DateTime
+  status           String     @default("BOOKED")
+  notes            String?
+  created_at       DateTime   @default(now())
+  case             cases      @relation(fields: [case_id], references: [case_id], onDelete: Cascade)
+  doctor           associates @relation(fields: [doctor_id], references: [associate_id])
+
+  @@index([case_id])
+  @@index([doctor_id])
+  @@index([status])
+}
+
+model prescriptions {
+  prescription_id String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  case_id         String               @db.Uuid
+  doctor_id       String?
+  diagnosis       String?
+  advice          String?
+  status          String               @default("ACTIVE")
+  created_at      DateTime             @default(now())
+  deliveries      deliveries[]
+  items           prescription_items[]
+  case            cases                @relation(fields: [case_id], references: [case_id], onDelete: Cascade)
+
+  @@index([case_id])
+}
+
+model prescription_items {
+  item_id         String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  prescription_id String        @db.Uuid
+  medicine_name   String
+  dosage          String?
+  frequency       String?
+  duration        String?
+  instructions    String?
+  prescription    prescriptions @relation(fields: [prescription_id], references: [prescription_id], onDelete: Cascade)
+}
+
+model test_orders {
+  test_order_id String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  case_id       String    @db.Uuid
+  test_name     String
+  test_type     String?
+  status        String    @default("ORDERED")
+  scheduled_at  DateTime?
+  result        Json?
+  completed_at  DateTime?
+  created_at    DateTime  @default(now())
+  case          cases     @relation(fields: [case_id], references: [case_id], onDelete: Cascade)
+
+  @@index([case_id])
+  @@index([status])
+}
+
+model referrals {
+  referral_id String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  case_id     String   @db.Uuid
+  specialty   String
+  reason      String?
+  referred_to String?
+  status      String   @default("PENDING")
+  created_at  DateTime @default(now())
+  case        cases    @relation(fields: [case_id], references: [case_id], onDelete: Cascade)
+
+  @@index([case_id])
+}
+
+model deliveries {
+  delivery_id     String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  prescription_id String        @db.Uuid
+  address         String
+  status          String        @default("PROCESSING")
+  eta             DateTime?
+  delivered_at    DateTime?
+  created_at      DateTime      @default(now())
+  prescription    prescriptions @relation(fields: [prescription_id], references: [prescription_id], onDelete: Cascade)
+
+  @@index([prescription_id])
+}
+
+model doctor_availability {
+  availability_id String   @id @default(uuid())
+  date            DateTime
+  start_time      DateTime
+  end_time        DateTime
+  is_booked       Boolean  @default(false)
+  doctor_id       String
+
+  @@index([doctor_id])
+  @@index([is_booked])
+}
+
+model audit_logs {
+  log_id     String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actor      String
+  action     String
+  entity     String
+  entity_id  String?
+  payload    Json?
+  result     String?
+  error      String?
+  created_at DateTime @default(now())
+
+  @@index([entity])
+  @@index([action])
+  @@index([created_at])
+}
+
+model users {
+  id         Int      @id @default(autoincrement())
+  name       String?
+  email      String   @unique
+  created_at DateTime @default(now())
+  password   String
+}

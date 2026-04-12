@@ -1,0 +1,168 @@
+
+{
+  "knowledge_cards": [
+    {
+      "id": "gitpronet_overview",
+      "title": "What is GITProNet",
+      "summary": "Global professional association building a People-First AI ecosystem.",
+      "content": [
+        "GITProNet (Global IT Professionals Network) is a professional association that brings together IT professionals, Support professionals, and Management professionals.",
+        "Its mission is to ensure Artificial Intelligence empowers people rather than replacing them.",
+        "Members collaborate to build technology, develop sector data networks, and deliver services using AI-assisted systems.",
+        "The ecosystem includes certification programs, PeopleAIHub collaboration, People AI Platform infrastructure, and JanMitra service delivery cooperatives."
+      ],
+      "cta": [
+        { "label": "Join GITProNet", "url": "/join" },
+        { "label": "Explore Certifications", "url": "/certifications" }
+      ]
+    },
+    {
+      "id": "people_first_ai",
+      "title": "People-First AI Concept",
+      "summary": "AI designed to empower workers instead of replacing them.",
+      "content": [
+        "People-First AI means Artificial Intelligence should assist professionals instead of replacing them.",
+        "AI performs repetitive tasks while humans focus on decision-making, empathy, and accountability.",
+        "The goal is to increase productivity, reduce workload, and create new forms of meaningful work.",
+        "Value created by AI should be shared with workers and communities rather than concentrated in a few corporations."
+      ],
+      "cta": [
+        { "label": "Learn About GITProNet", "url": "/about" }
+      ]
+    },
+    {
+      "id": "certifications_overview",
+      "title": "Professional Certification Programs",
+      "summary": "Training pathways preparing professionals for the People-First AI economy.",
+      "content": [
+        "GITProNet certifications prepare professionals to work in AI-enabled service ecosystems.",
+        "Each certification combines training, mentorship, projects, and practical implementation.",
+        "Programs focus on three roles required in the AI economy: technology development, ecosystem management, and service delivery."
+      ],
+      "cta": [
+        { "label": "View Certification Tracks", "url": "/certifications" }
+      ]
+    },
+    {
+      "id": "caidp_program",
+      "title": "CAIDP — Certified AI Developer Professional",
+      "summary": "Program for developers building AI systems and assistants.",
+      "content": [
+        "CAIDP prepares software developers to build responsible AI applications and intelligent assistants.",
+        "Participants learn AI agent architecture, workflow automation, and integration with real service systems.",
+        "Developers collaborate through PeopleAIHub and contribute to sector-specific AI assistants.",
+        "The program emphasizes ethical AI design and community impact."
+      ],
+      "cta": [
+        { "label": "Enroll in CAIDP", "url": "/certifications/caidp" }
+      ]
+    },
+    {
+      "id": "caiesp_program",
+      "title": "CAIESP — Certified AI-Enabled Support Professional",
+      "summary": "Training program for professionals delivering services with AI assistance.",
+      "content": [
+        "CAIESP trains support professionals to deliver services using Jana AI assistants.",
+        "Participants learn case coordination, documentation support, client guidance, and service workflow management.",
+        "Graduates can work as JanMitra Associates providing trusted assistance to citizens, residents, and consumers."
+      ],
+      "cta": [
+        { "label": "Enroll in CAIESP", "url": "/certifications/caiesp" }
+      ]
+    },
+    {
+      "id": "caimp_program",
+      "title": "CAIMP — Certified AI Management Professional",
+      "summary": "Program for management professionals building data networks and service ecosystems.",
+      "content": [
+        "CAIMP prepares management professionals to organize sector ecosystems.",
+        "Participants build provider networks, data banks of services, pricing frameworks, and operational models.",
+        "They coordinate technology, support professionals, and service providers across sectors.",
+        "Their role ensures AI systems operate within structured human-centered governance."
+      ],
+      "cta": [
+        { "label": "Enroll in CAIMP", "url": "/certifications/caimp" }
+      ]
+    },
+    {
+      "id": "peopleaihub",
+      "title": "PeopleAIHub",
+      "summary": "Collaborative platform where professionals build People-First AI systems.",
+      "content": [
+        "PeopleAIHub is a collaboration environment for developers, researchers, and professionals.",
+        "Members build AI assistants, workflows, and sector-specific tools.",
+        "The platform supports open collaboration, shared documentation, and project development.",
+        "It helps professionals collectively build ethical AI technology."
+      ],
+      "cta": [
+        { "label": "Explore PeopleAIHub", "url": "/peopleaihub" }
+      ]
+    },
+    {
+      "id": "people_ai_platform",
+      "title": "People AI Platform",
+      "summary": "Shared infrastructure enabling AI-assisted services across sectors.",
+      "content": [
+        "The People AI Platform provides the technology infrastructure powering AI assistants and service workflows.",
+        "It integrates data networks, partner ecosystems, and intelligent automation.",
+        "The platform enables professionals to deliver services efficiently while maintaining accountability and human oversight."
+      ],
+      "cta": [
+        { "label": "Learn About Platform", "url": "/people-ai-platform" }
+      ]
+    },
+    {
+      "id": "jana_ai_assistants",
+      "title": "Jana AI Assistants",
+      "summary": "AI assistants that guide professionals and help coordinate services.",
+      "content": [
+        "Jana AI Assistants help professionals complete tasks using natural language interaction.",
+        "They provide step-by-step guidance, access to data networks, and workflow automation.",
+        "Jana reduces repetitive administrative work and helps professionals focus on meaningful human interactions."
+      ],
+      "cta": [
+        { "label": "See How Jana Works", "url": "/jana" }
+      ]
+    },
+    {
+      "id": "janmitra_cooperative",
+      "title": "JanMitra Service Provider Cooperative",
+      "summary": "Community-based cooperative delivering AI-assisted support services.",
+      "content": [
+        "JanMitra means 'Friend of the People'.",
+        "It is a cooperative network of trained professionals delivering support services using Jana AI assistants.",
+        "JanMitra Associates help people access healthcare, education, government services, travel, finance, and other services.",
+        "The cooperative model ensures professionals have ownership, fair income opportunities, and long-term careers."
+      ],
+      "cta": [
+        { "label": "Become a JanMitra Associate", "url": "/janmitra" }
+      ]
+    },
+    {
+      "id": "summit",
+      "title": "People-First AI Summit",
+      "summary": "Global event showcasing AI systems designed to empower people.",
+      "content": [
+        "The People-First AI Summit brings together professionals, innovators, and community leaders.",
+        "The summit showcases AI assistants, cooperative service models, and real-world implementations.",
+        "It is a platform for collaboration, partnerships, and launching new initiatives in the People-First AI ecosystem."
+      ],
+      "cta": [
+        { "label": "Summit Information", "url": "/summit" }
+      ]
+    },
+    {
+      "id": "membership_benefits",
+      "title": "GITProNet Membership Benefits",
+      "summary": "Benefits available to members of the association.",
+      "content": [
+        "Members become part of a global professional network focused on ethical AI development and implementation.",
+        "They gain access to certification programs, collaborative platforms, and community initiatives.",
+        "Members can participate in building AI assistants, launching cooperative service models, and shaping the future of work."
+      ],
+      "cta": [
+        { "label": "Become a Member", "url": "/join" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,161 @@
+{
+  "start": {
+    "text": "Hi! I'm Jana 👋\nWelcome to GITProNet.\n\nWe're building People-First AI — AI that empowers professionals instead of replacing them.\n\nWhat would you like to explore?",
+    "buttons": [
+      { "label": "What is GITProNet?", "next": "about_gitpronet" },
+      { "label": "Certifications", "next": "certifications_overview" },
+      { "label": "PeopleAIHub", "next": "peopleaihub_overview" },
+      { "label": "People AI Platform", "next": "platform_overview" },
+      { "label": "JanMitra Cooperative", "next": "janmitra_overview" },
+      { "label": "People-First AI Summit", "next": "summit_overview" },
+      { "label": "Join / Register", "next": "join_menu" },
+      { "label": "FAQ", "next": "faq_menu" }
+    ]
+  },
+
+  "about_gitpronet": {
+    "text": "GITProNet (Global IT Professionals Network) is a professional association that brings together IT, Support, and Management professionals to build a People-First AI economy.\n\nOur mission:\n• AI should empower professionals — not replace them\n• Professionals can co-create and co-own platforms\n• Communities benefit from AI-assisted services\n\nWhat would you like to explore next?",
+    "buttons": [
+      { "label": "Certifications", "next": "certifications_overview" },
+      { "label": "PeopleAIHub", "next": "peopleaihub_overview" },
+      { "label": "JanMitra Cooperative", "next": "janmitra_overview" },
+      { "label": "Join GITProNet", "next": "join_menu" },
+      { "label": "Back to Menu", "next": "start" }
+    ]
+  },
+
+  "certifications_overview": {
+    "text": "GITProNet offers three professional certification tracks:\n\n• CAIDP — Certified AI Developer Professional\n• CAIESP — Certified AI-Enabled Support Professional\n• CAIMP — Certified AI-Enabled Management Professional\n\nEach program includes hands-on projects, mentorship, and real ecosystem opportunities.\n\nWhich certification would you like to explore?",
+    "buttons": [
+      { "label": "CAIDP (Developer)", "next": "caidp_detail" },
+      { "label": "CAIESP (Support)", "next": "caiesp_detail" },
+      { "label": "CAIMP (Management)", "next": "caimp_detail" },
+      { "label": "Help me choose", "next": "help_choose_track" },
+      { "label": "Back to Menu", "next": "start" }
+    ]
+  },
+
+  "caidp_detail": {
+    "text": "CAIDP (Certified AI Developer Professional) prepares developers to build real AI-powered systems.\n\nYou will learn:\n• AI agent workflows\n• API integrations\n• Data pipelines\n• Responsible AI design\n\nGraduates contribute to projects on PeopleAIHub.",
+    "buttons": [
+      { "label": "Explore PeopleAIHub", "next": "peopleaihub_overview" },
+      { "label": "Get Certified", "url": "/certifications" },
+      { "label": "Back", "next": "certifications_overview" }
+    ]
+  },
+
+  "caiesp_detail": {
+    "text": "CAIESP (Certified AI-Enabled Support Professional) prepares professionals to deliver services using AI assistants.\n\nYou will learn:\n• Client intake workflows\n• Documentation support\n• Service coordination\n• Ethics and privacy handling\n\nGraduates can become JanMitra Associates.",
+    "buttons": [
+      { "label": "Explore JanMitra", "next": "janmitra_overview" },
+      { "label": "Get Certified", "url": "/certifications" },
+      { "label": "Back", "next": "certifications_overview" }
+    ]
+  },
+
+  "caimp_detail": {
+    "text": "CAIMP (Certified AI-Enabled Management Professional) prepares leaders to coordinate AI ecosystems.\n\nYou will learn:\n• Data network management\n• Partnerships and governance\n• Cooperative operations\n• Platform strategy",
+    "buttons": [
+      { "label": "Explore People AI Platform", "next": "platform_overview" },
+      { "label": "Get Certified", "url": "/certifications" },
+      { "label": "Back", "next": "certifications_overview" }
+    ]
+  },
+
+  "help_choose_track": {
+    "text": "Let me help you choose.\n\nWhich best describes your interest?",
+    "buttons": [
+      { "label": "Building technology", "next": "caidp_detail" },
+      { "label": "Helping people with services", "next": "caiesp_detail" },
+      { "label": "Managing systems & operations", "next": "caimp_detail" },
+      { "label": "Back", "next": "certifications_overview" }
+    ]
+  },
+
+  "peopleaihub_overview": {
+    "text": "PeopleAIHub is our collaborative platform where professionals build People-First AI solutions.\n\nFeatures include:\n• Shared AI projects\n• Developer collaboration\n• Agent templates\n• Community mentorship\n\nMembers can build tools used across the ecosystem.",
+    "buttons": [
+      { "label": "Join PeopleAIHub", "url": "/peopleaihub" },
+      { "label": "See Certifications", "next": "certifications_overview" },
+      { "label": "Back to Menu", "next": "start" }
+    ]
+  },
+
+  "platform_overview": {
+    "text": "The People AI Platform provides shared infrastructure for the ecosystem.\n\nIt powers:\n• Jana AI assistants\n• Workflow automation\n• Knowledge networks\n• Ethical AI governance",
+    "buttons": [
+      { "label": "See JanMitra Model", "next": "janmitra_overview" },
+      { "label": "Back to Menu", "next": "start" }
+    ]
+  },
+
+  "janmitra_overview": {
+    "text": "JanMitra means 'Friend of the People'.\n\nJanMitra Associates are trained professionals who deliver trusted support services using Jana AI.\n\nBenefits:\n• Structured training\n• AI-assisted workflows\n• Cooperative income opportunities\n• Community impact",
+    "buttons": [
+      { "label": "Become a JanMitra Associate", "url": "/janmitra" },
+      { "label": "See Certifications", "next": "certifications_overview" },
+      { "label": "Back to Menu", "next": "start" }
+    ]
+  },
+
+  "summit_overview": {
+    "text": "The People-First AI Summit showcases how professionals can lead the AI transformation.\n\nAt the summit:\n• AI assistants demonstrations\n• Cooperative service models\n• Partner announcements\n• Certification launches",
+    "buttons": [
+      { "label": "Register Interest", "url": "/summit" },
+      { "label": "Back to Menu", "next": "start" }
+    ]
+  },
+
+  "join_menu": {
+    "text": "Great! What would you like to join?",
+    "buttons": [
+      { "label": "GITProNet Membership", "url": "/join" },
+      { "label": "Certifications", "url": "/certifications" },
+      { "label": "PeopleAIHub", "url": "/peopleaihub" },
+      { "label": "JanMitra Cooperative", "url": "/janmitra" },
+      { "label": "Back to Menu", "next": "start" }
+    ]
+  },
+
+  "faq_menu": {
+    "text": "Here are some common questions.",
+    "buttons": [
+      { "label": "Membership benefits", "next": "faq_membership" },
+      { "label": "Who can join?", "next": "faq_eligibility" },
+      { "label": "How long are certifications?", "next": "faq_duration" },
+      { "label": "Back to Menu", "next": "start" }
+    ]
+  },
+
+  "faq_membership": {
+    "text": "Membership benefits include:\n\n• Access to certification programs\n• Participation in PeopleAIHub projects\n• Networking with professionals\n• Participation in People-First AI initiatives",
+    "buttons": [
+      { "label": "Join Now", "url": "/join" },
+      { "label": "Back", "next": "faq_menu" }
+    ]
+  },
+
+  "faq_eligibility": {
+    "text": "Anyone interested in building or supporting AI-enabled systems can join.\n\nCommon roles include:\n• Students\n• Developers\n• Support professionals\n• Management professionals",
+    "buttons": [
+      { "label": "Back", "next": "faq_menu" }
+    ]
+  },
+
+  "faq_duration": {
+    "text": "Certification durations vary depending on the track and learning pace.\n\nMost programs combine:\n• Guided coursework\n• Practical projects\n• Mentorship",
+    "buttons": [
+      { "label": "View Certifications", "url": "/certifications" },
+      { "label": "Back", "next": "faq_menu" }
+    ]
+  },
+"fallback": {
+  "text": "I'm not sure I understood that. You can explore these topics:",
+  "buttons": [
+    { "label": "What is GITProNet?", "next": "about_gitpronet" },
+    { "label": "Certifications", "next": "certifications_overview" },
+    { "label": "PeopleAIHub", "next": "peopleaihub_overview" },
+    { "label": "JanMitra", "next": "janmitra_overview" }
+    ]
+  }
+}
