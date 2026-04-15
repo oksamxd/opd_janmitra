@@ -3,7 +3,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { AiService } from '../healthcare/services/ai.service';
 import { Readable } from 'stream';
 
-@Controller('api/voice')
+@Controller('voice')
 export class VoiceController {
   constructor(private readonly aiService: AiService) {}
 

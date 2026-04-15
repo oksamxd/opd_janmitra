@@ -18,11 +18,12 @@
 
         body {
             font-family: 'Outfit', sans-serif;
-            background-color: var(--background);
+            background: linear-gradient(135deg, #f0f7ff 0%, #ffffff 100%);
             margin: 0;
             display: flex;
-            height: 100vh;
+            min-height: 100vh;
             color: var(--text-main);
+            overflow-x: hidden;
         }
 
         /* Sidebar */
@@ -85,6 +86,13 @@
         }
 
         /* Main Workspace */
+        .main-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
         .workspace {
             flex: 1;
             display: flex;
@@ -232,7 +240,7 @@
     </div>
 
     <script>
-        const API_BASE = '/lab';
+        const API_BASE = window.location.origin + '/api/lab';
         let currentCaseId = null;
         let activeOrders = [];
 

@@ -21,7 +21,9 @@ export class DoctorController {
   async getActiveCases() {
     const sessions = await this.prisma.opd_sessions.findMany({
       where: {
-        opd_state: OpdState.CONSULTATION_IN_PROGRESS,
+        opd_state: {
+          in: [OpdState.CONSULTATION_IN_PROGRESS, OpdState.TEST_COMPLETED],
+        },
         is_active: true,
       },
       orderBy: { created_at: 'desc' },

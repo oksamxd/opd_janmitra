@@ -1400,11 +1400,40 @@ Then, ask if they would like Janmitra to deliver the medicines securely to their
     }
 
     if (message.toLowerCase().includes('follow') || message.toLowerCase().includes('schedule')) {
-      const followupDate = new Date(); followupDate.setDate(followupDate.getDate() + 7);
-      inputs.followupDate = followupDate;
+      // Initiate follow-up booking
+      inputs.consultationType = 'Teleconsultation';
+      const newState = OpdState.APPOINTMENT_INIT;
+      
+      const msg = await this.aiService.formatResponse({ 
+        currentState: newState, 
+        stateLabel: STATE_LABELS[newState], 
+        systemPrompt: `The user wants a follow-up. I've already set it as a Teleconsultation. Ask them about their time preference for this follow-up call.`, 
+        history: aiHistory, 
+        language: inputs.language 
+      });
+      
+      aiHistory.push({ role: 'assistant', content: msg });
+      
+      await this.prisma.opd_sessions.update({
+        where: { session_id: session.session_id },
+        data: { opd_state: newState, collected_inputs: inputs as any, ai_history: aiHistory as any }
+      });
+
+      return { 
+        newState, 
+        responseMessage: msg, 
+        type: 'text' as const, 
+        autoAdvance: true, // Trigger next state logic immediately
+        actionName: 'START_FOLLOWUP_BOOKING', 
+        data: {}, 
+        inputs, 
+        aiHistory 
+      };
     }
-    await this.caseActions.closeCase(inputs.caseId, 'Normal closure after outcome processing');
-    const newState = transition(OpdState.FOLLOWUP_PENDING, OpdState.CLOSED);
+
+    // Default: Close Case
+    await this.caseActions.closeCase(inputs.caseId, 'Case closed by user request.');
+    const newState = OpdState.CLOSED;
 
     // Log Event
     await this.addCaseEvent(inputs.caseId, 'CASE_CLOSED', { summary: 'Patient healthcare journey completed.' });

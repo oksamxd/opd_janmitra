@@ -20,8 +20,9 @@
             background: linear-gradient(135deg, #e0f2f1 0%, #ffffff 100%);
             margin: 0;
             display: flex;
-            height: 100vh;
+            min-height: 100vh;
             color: var(--text-main);
+            overflow-x: hidden;
         }
 
         /* Sidebar */
@@ -89,7 +90,7 @@
             flex: 1;
             display: flex;
             flex-direction: column;
-            overflow: hidden;
+            min-height: 100vh;
         }
 
         .panel-header {
@@ -189,6 +190,19 @@
             gap: 8px;
             margin-bottom: 8px;
         }
+
+        .state-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-top: 4px;
+        }
+
+        .state-consultation { background: #e3f2fd; color: #1976d2; }
+        .state-test-ready { background: #fff3e0; color: #e65100; border: 1px solid #ffcc80; }
     </style>
 </head>
 <body>
@@ -279,7 +293,7 @@
     </div>
 
     <script>
-        const API_BASE = '/doctor';
+        const API_BASE = window.location.origin + '/api/doctor';
         let currentSessionId = null;
         let activeCase = null;
 
@@ -294,13 +308,22 @@
                     return;
                 }
 
-                list.innerHTML = cases.map(c => `
-                    <div class="case-item ${currentSessionId === c.sessionId ? 'active' : ''}" onclick="selectCase('${c.sessionId}')">
-                        <h3>Patient Case</h3>
-                        <p>${c.inputs.doctorSpecialty || 'General OPD'}</p>
-                        <p style="font-size:11px; margin-top:4px;">${new Date(c.createdAt).toLocaleTimeString()}</p>
-                    </div>
-                `).join('');
+                list.innerHTML = cases.map(c => {
+                    const isTestReady = c.state === 'TEST_COMPLETED';
+                    const badgeClass = isTestReady ? 'state-test-ready' : 'state-consultation';
+                    const badgeText = isTestReady ? '📊 Results Ready' : '🩺 Consultation';
+
+                    return `
+                        <div class="case-item ${currentSessionId === c.sessionId ? 'active' : ''}" onclick="selectCase('${c.sessionId}')">
+                            <div style="display:flex; justify-content:space-between; align-items:start;">
+                                <h3>Patient Case</h3>
+                                <div class="state-badge ${badgeClass}">${badgeText}</div>
+                            </div>
+                            <p>${c.inputs.doctorSpecialty || 'General OPD'}</p>
+                            <p style="font-size:11px; margin-top:4px;">${new Date(c.createdAt).toLocaleTimeString()}</p>
+                        </div>
+                    `;
+                }).join('');
             } catch (e) {
                 console.error('Queue load failed', e);
             }

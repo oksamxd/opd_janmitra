@@ -12,6 +12,8 @@ async function bootstrap() {
     allowedHeaders: '*',
   });
 
+  app.setGlobalPrefix('api');
+
   app.useStaticAssets(join(process.cwd(), 'frontend'), {
     prefix: '/frontend/',
   });

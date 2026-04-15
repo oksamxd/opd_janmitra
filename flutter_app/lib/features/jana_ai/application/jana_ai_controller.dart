@@ -96,7 +96,7 @@ class JanaAiController extends ChangeNotifier {
 
     try {
       final response = await http.post(
-        Uri.parse('http://localhost:3005/jana/message'),
+        Uri.parse('/api/jana/message'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'message': text,
@@ -146,7 +146,7 @@ class JanaAiController extends ChangeNotifier {
         if (_state.speakerEnabled && _audioPlayer != null) {
           final escapedText = Uri.encodeComponent(replyText);
           _audioPlayer!.src =
-              'http://localhost:3005/api/voice/synthesize?text=${escapedText}';
+              '/api/voice/synthesize?text=${escapedText}';
           _audioPlayer!.autoplay = true;
           _audioPlayer!.play().catchError((e) {
             print('TTS error: $e');
@@ -263,7 +263,7 @@ class JanaAiController extends ChangeNotifier {
       await reader.onLoadEnd.first;
       final bytes = reader.result as List<int>;
 
-      final uri = Uri.parse('http://localhost:3005/api/voice/transcribe');
+      final uri = Uri.parse('/api/voice/transcribe');
       final request = http.MultipartRequest('POST', uri);
       request.files.add(http.MultipartFile.fromBytes('audio', bytes, filename: 'recording.webm'));
 
@@ -323,7 +323,7 @@ class JanaAiController extends ChangeNotifier {
     _isProcessingQueue = false;
     _state = _state.copyWith(contextEvents: []);
     _isFirstSync = true;
-    _eventSource = html.EventSource('http://localhost:3005/events/stream/$caseId');
+    _eventSource = html.EventSource('/api/events/stream/$caseId');
     _eventSource!.onMessage.listen((html.MessageEvent event) {
       if (event.data != null) {
         try {

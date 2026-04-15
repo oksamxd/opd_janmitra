@@ -67,8 +67,19 @@ export class LabController {
     @Body() body: { caseId: string; results: { id: string; result: string }[]; notes?: string }
   ) {
     await this.prisma.$transaction(async (tx) => {
-      // 1. Update each test order
+      // 1. Fetch metadata for cases/members for better logging
+      const caseData = await tx.cases.findUnique({
+        where: { case_id: body.caseId },
+        include: { members: true }
+      });
+      const patientName = caseData?.members?.full_name || 'Patient';
+
+      // 2. Update each test order and log events
       for (const res of body.results) {
+        // Fetch test name first
+        const order = await tx.test_orders.findUnique({ where: { test_order_id: res.id } });
+        const testName = order?.test_name || 'Unknown Test';
+
         await tx.test_orders.update({
           where: { test_order_id: res.id },
           data: {
@@ -77,29 +88,24 @@ export class LabController {
             completed_at: new Date()
           }
         });
+
+        // Log specific event for this test
+        await tx.case_events.create({
+          data: {
+            case_id: body.caseId,
+            event_type: 'TEST_COMPLETED',
+            actor_type: 'LAB_TECHNICIAN',
+            payload: {
+              message: `Medical Update: Your ${testName} report is ready. Result: ${res.result.length > 50 ? res.result.slice(0, 50) + '...' : res.result}.`,
+              testName: testName,
+              report: res.result,
+              note: body.notes
+            }
+          }
+        });
       }
 
-      // 2. Log Case Event
-      const caseData = await tx.cases.findUnique({
-        where: { case_id: body.caseId },
-        include: { members: true }
-      });
-      const patientName = caseData?.members?.full_name || 'Patient';
-
-      await tx.case_events.create({
-        data: {
-          case_id: body.caseId,
-          event_type: 'TEST_COMPLETED',
-          actor_type: 'LAB_TECHNICIAN',
-          payload: {
-            message: `Laboratory results for ${patientName} are ready. ${body.notes || ''}`,
-            testCount: body.results.length,
-            reports: body.results
-          }
-        }
-      });
-
-      // 3. Force State Transition
+      // 3. Force State Transition for the entire session
       const session = await tx.opd_sessions.findFirst({
         where: {
           collected_inputs: {

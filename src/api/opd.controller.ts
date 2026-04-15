@@ -12,7 +12,7 @@ import { DeliveryActions } from '../actions/delivery.actions';
 import { TriggerEngine } from '../engine/trigger-engine';
 import { AuditLogger } from '../engine/audit-logger';
 
-@Controller('api')
+@Controller('opd')
 export class OpdController {
   constructor(
     private memberActions: MemberActions,
