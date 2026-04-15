@@ -1,32 +1,60 @@
-# Dependencies
-node_modules/
+# compiled output
+/dist
+/node_modules
+/build
 
-# Build output
-dist/
-
-# Environment
-.env
-
-# IDE
-.idea/
-*.iml
-.vscode/
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
 
 # OS
 .DS_Store
-Thumbs.db
 
-# Prisma
-prisma/*.db
+# Tests
+/coverage
+/.nyc_output
 
-# Flutter build output
-flutter_app/build/
-flutter_app/.dart_tool/
-flutter_app/.gradle/
-flutter_app/8.14/
-flutter_app/ephemeral/
-flutter_app/noVersion/
-flutter_app/checksums/
-flutter_app/fileHashes/
-flutter_app/*.bin
-flutter_app/*.lock
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# dotenv environment variable files
+.env
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+
+# temp directory
+.temp
+.tmp
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Diagnostic reports (https://nodejs.org/api/report.html)
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+/generated/prisma
+
+/generated/prisma
