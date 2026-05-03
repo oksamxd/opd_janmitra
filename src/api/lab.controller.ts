@@ -2,10 +2,15 @@ import { Controller, Post, Body, Param, Get, Res } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import * as express from 'express';
 import { join } from 'path';
+import { JanaOrchestratorService } from '../orchestrator/jana-orchestrator.service';
+import { OpdState } from '../engine/state-machine';
 
 @Controller('lab')
 export class LabController {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private janaService: JanaOrchestratorService,
+  ) {}
 
   @Get('dashboard')
   async getDashboard(@Res() res: express.Response) {
@@ -18,22 +23,22 @@ export class LabController {
     const casesWithTests = await this.prisma.cases.findMany({
       where: {
         test_orders: {
-          some: { status: 'ORDERED' }
-        }
+          some: { status: 'ORDERED' },
+        },
       },
       include: {
         test_orders: {
-          where: { status: 'ORDERED' }
-        }
-      }
+          where: { status: 'ORDERED' },
+        },
+      },
     });
 
-    return casesWithTests.map(c => ({
+    return casesWithTests.map((c) => ({
       caseId: c.case_id,
-      tests: c.test_orders.map(t => ({
+      tests: c.test_orders.map((t) => ({
         id: t.test_order_id,
-        name: t.test_name
-      }))
+        name: t.test_name,
+      })),
     }));
   }
 
@@ -44,9 +49,9 @@ export class LabController {
       include: {
         members: true,
         test_orders: {
-          where: { status: 'ORDERED' }
-        }
-      }
+          where: { status: 'ORDERED' },
+        },
+      },
     });
 
     if (!caseData) throw new Error('Case not found');
@@ -54,30 +59,37 @@ export class LabController {
     return {
       caseId: caseData.case_id,
       memberName: caseData.members?.full_name,
-      tests: caseData.test_orders.map(t => ({
+      tests: caseData.test_orders.map((t) => ({
         id: t.test_order_id,
         name: t.test_name,
-        status: t.status
-      }))
+        status: t.status,
+      })),
     };
   }
 
   @Post('submit-results')
   async submitResults(
-    @Body() body: { caseId: string; results: { id: string; result: string }[]; notes?: string }
+    @Body()
+    body: {
+      caseId: string;
+      results: { id: string; result: string }[];
+      notes?: string;
+    },
   ) {
     await this.prisma.$transaction(async (tx) => {
       // 1. Fetch metadata for cases/members for better logging
       const caseData = await tx.cases.findUnique({
         where: { case_id: body.caseId },
-        include: { members: true }
+        include: { members: true },
       });
       const patientName = caseData?.members?.full_name || 'Patient';
 
       // 2. Update each test order and log events
       for (const res of body.results) {
         // Fetch test name first
-        const order = await tx.test_orders.findUnique({ where: { test_order_id: res.id } });
+        const order = await tx.test_orders.findUnique({
+          where: { test_order_id: res.id },
+        });
         const testName = order?.test_name || 'Unknown Test';
 
         await tx.test_orders.update({
@@ -85,8 +97,8 @@ export class LabController {
           data: {
             status: 'COMPLETED',
             result: { report: res.result },
-            completed_at: new Date()
-          }
+            completed_at: new Date(),
+          },
         });
 
         // Log specific event for this test
@@ -99,9 +111,9 @@ export class LabController {
               message: `Medical Update: Your ${testName} report is ready. Result: ${res.result.length > 50 ? res.result.slice(0, 50) + '...' : res.result}.`,
               testName: testName,
               report: res.result,
-              note: body.notes
-            }
-          }
+              note: body.notes,
+            },
+          },
         });
       }
 
@@ -110,17 +122,20 @@ export class LabController {
         where: {
           collected_inputs: {
             path: ['caseId'],
-            equals: body.caseId
+            equals: body.caseId,
           },
-          is_active: true
-        }
+          is_active: true,
+        },
       });
 
       if (session) {
         await tx.opd_sessions.update({
           where: { session_id: session.session_id },
-          data: { opd_state: 'TEST_COMPLETED' }
+          data: { opd_state: 'TEST_COMPLETED' },
         });
+
+        // ─── TRIGGER MILESTONE ────────────────────────────────────────────
+        await this.janaService.triggerMilestone(session, OpdState.TEST_COMPLETED);
       }
     });
 

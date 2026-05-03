@@ -2,6 +2,7 @@ import { Controller, Post, Body, Param, Get, Res } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { OutcomeActions } from '../actions/outcome.actions';
 import { OpdState, transition } from '../engine/state-machine';
+import { JanaOrchestratorService } from '../orchestrator/jana-orchestrator.service';
 import * as express from 'express';
 import { join } from 'path';
 
@@ -10,6 +11,7 @@ export class DoctorController {
   constructor(
     private prisma: PrismaService,
     private outcomeActions: OutcomeActions,
+    private janaService: JanaOrchestratorService,
   ) {}
 
   @Get('dashboard')
@@ -29,7 +31,7 @@ export class DoctorController {
       orderBy: { created_at: 'desc' },
     });
 
-    return sessions.map(s => ({
+    return sessions.map((s) => ({
       sessionId: s.session_id,
       state: s.opd_state,
       createdAt: s.created_at,
@@ -47,12 +49,13 @@ export class DoctorController {
     const inputs = session.collected_inputs as any;
     const caseId = inputs['caseId'] as string;
     let caseData: any = null;
-    
+
     if (caseId) {
       caseData = await this.prisma.cases.findUnique({
         where: { case_id: caseId },
         include: {
           test_orders: true,
+          case_documents: true,
           prescriptions: { include: { items: true } },
         },
       });
@@ -70,17 +73,25 @@ export class DoctorController {
   @Post('submit-outcomes/:sessionId')
   async submitOutcomes(
     @Param('sessionId') sessionId: string,
-    @Body() body: {
+    @Body()
+    body: {
       caseId: string;
       doctorId: string;
       consultationNote: string;
       diagnosis: string;
-      prescriptions: { medicine: string; dosage: string; frequency: string; duration: string }[];
+      prescriptions: {
+        medicine: string;
+        dosage: string;
+        frequency: string;
+        duration: string;
+      }[];
       testOrders: string[];
       referralSpecialty: string;
-    }
+    },
   ) {
-    const session = await this.prisma.opd_sessions.findUnique({ where: { session_id: sessionId } });
+    const session = await this.prisma.opd_sessions.findUnique({
+      where: { session_id: sessionId },
+    });
     if (!session) throw new Error('Session not found');
 
     const inputs = session.collected_inputs as any;
@@ -96,18 +107,18 @@ export class DoctorController {
         body.doctorId,
         body.diagnosis,
         body.consultationNote || 'Follow medication.',
-        body.prescriptions.map(p => ({
+        body.prescriptions.map((p) => ({
           name: p.medicine,
           dosage: p.dosage,
           frequency: p.frequency,
           duration: p.duration.toString() + ' days',
           instructions: 'Take after meals',
-        }))
+        })),
       );
       inputs.hasPrescription = true;
       inputs.outcomes.prescription = {
         diagnosis: body.diagnosis,
-        medications: body.prescriptions.map(p => ({
+        medications: body.prescriptions.map((p) => ({
           name: p.medicine,
           frequency: p.frequency,
         })),
@@ -118,10 +129,13 @@ export class DoctorController {
     if (body.testOrders && body.testOrders.length > 0) {
       await this.outcomeActions.createTestOrders(
         body.caseId,
-        body.testOrders.map(t => ({ name: t, type: 'ROUTINE' }))
+        body.testOrders.map((t) => ({ name: t, type: 'ROUTINE' })),
       );
       inputs.hasTests = true;
-      inputs.outcomes.testOrders = body.testOrders.map(t => ({ name: t, type: 'ROUTINE' }));
+      inputs.outcomes.testOrders = body.testOrders.map((t) => ({
+        name: t,
+        type: 'ROUTINE',
+      }));
     }
 
     // Save Referral
@@ -129,13 +143,15 @@ export class DoctorController {
       await this.outcomeActions.createReferral(
         body.caseId,
         body.referralSpecialty,
-        `Referred from Doctor ${body.doctorId || 'Internal'}`
+        `Referred from Doctor ${body.doctorId || 'Internal'}`,
       );
       inputs.hasReferrals = true;
-      inputs.outcomes.referrals = [{
-        specialty: body.referralSpecialty,
-        reason: `Referred from Doctor ${body.doctorId || 'Internal'}`,
-      }];
+      inputs.outcomes.referrals = [
+        {
+          specialty: body.referralSpecialty,
+          reason: `Referred from Doctor ${body.doctorId || 'Internal'}`,
+        },
+      ];
     }
 
     // Force transition to OUTCOME_GENERATED
@@ -146,7 +162,7 @@ export class DoctorController {
       where: { session_id: sessionId },
       data: {
         opd_state: newState,
-        collected_inputs: inputs as any,
+        collected_inputs: inputs,
       },
     });
 
@@ -155,7 +171,8 @@ export class DoctorController {
     if (inputs.hasPrescription) eventParts.push('medicines prescribed');
     if (inputs.hasTests) eventParts.push('diagnostic tests ordered');
     if (inputs.hasReferrals) eventParts.push('specialist referral');
-    const eventSummary = eventParts.length > 0 ? eventParts.join(', ') : 'review completed';
+    const eventSummary =
+      eventParts.length > 0 ? eventParts.join(', ') : 'review completed';
 
     // Fetch the patient's name for personalization
     const caseData = await this.prisma.cases.findUnique({
@@ -174,6 +191,10 @@ export class DoctorController {
         },
       },
     });
+
+    // ─── TRIGGER MILESTONE ────────────────────────────────────────────────
+    // This ensures the patient sees a "Proceed" button when they return
+    await this.janaService.triggerMilestone(session, newState);
 
     return { success: true, newState };
   }

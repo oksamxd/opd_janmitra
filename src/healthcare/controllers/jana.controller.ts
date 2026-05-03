@@ -37,7 +37,8 @@ export class JanaController {
     const status = await this.janaService.getSessionStatus(sessionId);
     if (!status) {
       return {
-        message: 'Welcome to Jana AI! 🏥 Please provide your Member ID to begin.',
+        message:
+          'Welcome to Jana AI! 🏥 Please provide your Member ID to begin.',
         options: [],
         action: 'NEW_SESSION',
         data: {},

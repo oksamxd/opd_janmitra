@@ -240,7 +240,25 @@
     </div>
 
     <script>
-        const API_BASE = window.location.origin + '/api/lab';
+        // --- API Configuration ---
+        function getApiBase(subpath) {
+            const stored = localStorage.getItem('JANA_API_URL');
+            const hostname = window.location.hostname;
+            const isLocal = window.location.protocol === 'file:' || hostname === 'localhost' || hostname === '127.0.0.1';
+            
+            // Production URL
+            const PROD_URL = 'https://demo.janaai.janmitra.net';
+            // Local dev fallback
+            const LOCAL_URL = 'http://localhost:3005';
+
+            const base = stored || (isLocal ? LOCAL_URL : PROD_URL);
+            return `${base}/api/${subpath}`;
+        }
+
+
+        const API_BASE = getApiBase('lab');
+        // -------------------------
+
         let currentCaseId = null;
         let activeOrders = [];
 

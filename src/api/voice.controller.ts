@@ -1,4 +1,15 @@
-import { Controller, Post, Body, UseInterceptors, UploadedFile, Get, Query, StreamableFile, HttpException, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  UseInterceptors,
+  UploadedFile,
+  Get,
+  Query,
+  StreamableFile,
+  HttpException,
+  HttpStatus,
+} from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AiService } from '../healthcare/services/ai.service';
 import { Readable } from 'stream';
@@ -37,7 +48,7 @@ export class VoiceController {
       const webStream = await this.aiService.synthesizeSpeechStream(text);
       // @ts-ignore - Readable.fromWeb exists in Node 18+
       const nodeStream = Readable.fromWeb(webStream);
-      
+
       return new StreamableFile(nodeStream, {
         type: 'audio/mpeg',
         disposition: 'inline; filename="spoken.mp3"',
@@ -46,7 +57,7 @@ export class VoiceController {
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
-  
+
   @Post('synthesize')
   async synthesizeSpeechPost(@Body('text') text: string) {
     if (!text) {
@@ -56,7 +67,7 @@ export class VoiceController {
       const webStream = await this.aiService.synthesizeSpeechStream(text);
       // @ts-ignore
       const nodeStream = Readable.fromWeb(webStream);
-      
+
       return new StreamableFile(nodeStream, {
         type: 'audio/mpeg',
         disposition: 'inline; filename="spoken.mp3"',

@@ -1,6 +1,6 @@
 /**
  * Trigger Engine — Event-driven trigger system
- * 
+ *
  * All triggers are IDEMPOTENT: check-before-create.
  * Prevents duplicate entity creation on retry.
  */
@@ -36,8 +36,16 @@ export class TriggerEngine {
     });
 
     if (existing) {
-      this.logger.warn(`IDEMPOTENT: Case already exists for member ${params.memberId}: ${existing.case_id}`);
-      await this.audit.log('TRIGGER_ENGINE', 'CASE_CREATION_TRIGGER_SKIPPED', 'cases', existing.case_id, { reason: 'IDEMPOTENT' });
+      this.logger.warn(
+        `IDEMPOTENT: Case already exists for member ${params.memberId}: ${existing.case_id}`,
+      );
+      await this.audit.log(
+        'TRIGGER_ENGINE',
+        'CASE_CREATION_TRIGGER_SKIPPED',
+        'cases',
+        existing.case_id,
+        { reason: 'IDEMPOTENT' },
+      );
       return { case: existing, isNew: false };
     }
 
@@ -106,8 +114,16 @@ export class TriggerEngine {
       return c;
     });
 
-    await this.audit.log('TRIGGER_ENGINE', 'CASE_CREATION_TRIGGER', 'cases', newCase.case_id, params);
-    this.logger.log(`✅ CASE_CREATION_TRIGGER: Created case ${newCase.case_id}`);
+    await this.audit.log(
+      'TRIGGER_ENGINE',
+      'CASE_CREATION_TRIGGER',
+      'cases',
+      newCase.case_id,
+      params,
+    );
+    this.logger.log(
+      `✅ CASE_CREATION_TRIGGER: Created case ${newCase.case_id}`,
+    );
 
     return { case: newCase, isNew: true };
   }
@@ -130,8 +146,16 @@ export class TriggerEngine {
     });
 
     if (existing) {
-      this.logger.warn(`IDEMPOTENT: Appointment already booked for case ${params.caseId}`);
-      await this.audit.log('TRIGGER_ENGINE', 'APPOINTMENT_BOOKED_TRIGGER_SKIPPED', 'appointments', existing.appointment_id, { reason: 'IDEMPOTENT' });
+      this.logger.warn(
+        `IDEMPOTENT: Appointment already booked for case ${params.caseId}`,
+      );
+      await this.audit.log(
+        'TRIGGER_ENGINE',
+        'APPOINTMENT_BOOKED_TRIGGER_SKIPPED',
+        'appointments',
+        existing.appointment_id,
+        { reason: 'IDEMPOTENT' },
+      );
       return { appointment: existing, isNew: false };
     }
 
@@ -142,7 +166,8 @@ export class TriggerEngine {
       });
 
       if (!slot) throw new Error('Slot not found');
-      if (slot.is_booked) throw new Error('Slot already booked — concurrency conflict');
+      if (slot.is_booked)
+        throw new Error('Slot already booked — concurrency conflict');
 
       // 2. Book the slot (optimistic locking via is_booked check)
       await tx.doctor_availability.update({
@@ -198,8 +223,16 @@ export class TriggerEngine {
       return appointment;
     });
 
-    await this.audit.log('TRIGGER_ENGINE', 'APPOINTMENT_BOOKED_TRIGGER', 'appointments', result.appointment_id, params);
-    this.logger.log(`✅ APPOINTMENT_BOOKED_TRIGGER: Booked appointment ${result.appointment_id}`);
+    await this.audit.log(
+      'TRIGGER_ENGINE',
+      'APPOINTMENT_BOOKED_TRIGGER',
+      'appointments',
+      result.appointment_id,
+      params,
+    );
+    this.logger.log(
+      `✅ APPOINTMENT_BOOKED_TRIGGER: Booked appointment ${result.appointment_id}`,
+    );
 
     return { appointment: result, isNew: true };
   }
@@ -211,7 +244,17 @@ export class TriggerEngine {
     caseId: string;
     doctorId: string;
     outcomes: {
-      prescription?: { diagnosis: string; advice: string; medications: { name: string; dosage: string; frequency: string; duration: string; instructions?: string }[] };
+      prescription?: {
+        diagnosis: string;
+        advice: string;
+        medications: {
+          name: string;
+          dosage: string;
+          frequency: string;
+          duration: string;
+          instructions?: string;
+        }[];
+      };
       testOrders?: { name: string; type: string }[];
       referrals?: { specialty: string; reason: string }[];
     };
@@ -259,7 +302,11 @@ export class TriggerEngine {
         for (const test of params.outcomes.testOrders) {
           // Idempotency: skip if same test already ordered
           const existingTest = await tx.test_orders.findFirst({
-            where: { case_id: params.caseId, test_name: test.name, status: { not: 'CANCELLED' } },
+            where: {
+              case_id: params.caseId,
+              test_name: test.name,
+              status: { not: 'CANCELLED' },
+            },
           });
 
           if (!existingTest) {
@@ -280,7 +327,11 @@ export class TriggerEngine {
       if (params.outcomes.referrals && params.outcomes.referrals.length > 0) {
         for (const ref of params.outcomes.referrals) {
           const existingRef = await tx.referrals.findFirst({
-            where: { case_id: params.caseId, specialty: ref.specialty, status: 'PENDING' },
+            where: {
+              case_id: params.caseId,
+              specialty: ref.specialty,
+              status: 'PENDING',
+            },
           });
 
           if (!existingRef) {
@@ -314,13 +365,21 @@ export class TriggerEngine {
       });
     });
 
-    await this.audit.log('TRIGGER_ENGINE', 'DOCTOR_OUTCOME_TRIGGER', 'cases', params.caseId, {
-      prescription: !!results.prescription,
-      tests: results.testOrders.length,
-      referrals: results.referrals.length,
-    });
+    await this.audit.log(
+      'TRIGGER_ENGINE',
+      'DOCTOR_OUTCOME_TRIGGER',
+      'cases',
+      params.caseId,
+      {
+        prescription: !!results.prescription,
+        tests: results.testOrders.length,
+        referrals: results.referrals.length,
+      },
+    );
 
-    this.logger.log(`✅ DOCTOR_OUTCOME_TRIGGER: Generated outcomes for case ${params.caseId}`);
+    this.logger.log(
+      `✅ DOCTOR_OUTCOME_TRIGGER: Generated outcomes for case ${params.caseId}`,
+    );
     return results;
   }
 
@@ -355,12 +414,18 @@ export class TriggerEngine {
         actor_type: 'SYSTEM',
         payload: {
           message: `${order.test_name} has been scheduled for ${params.scheduledAt.toLocaleDateString()}`,
-          testOrderId: order.test_order_id
+          testOrderId: order.test_order_id,
         },
       },
     });
 
-    await this.audit.log('TRIGGER_ENGINE', 'DIAGNOSTIC_BOOKING_TRIGGER', 'test_orders', params.testOrderId, params);
+    await this.audit.log(
+      'TRIGGER_ENGINE',
+      'DIAGNOSTIC_BOOKING_TRIGGER',
+      'test_orders',
+      params.testOrderId,
+      params,
+    );
     return { testOrder: updated, isNew: true };
   }
 
@@ -373,7 +438,10 @@ export class TriggerEngine {
   }) {
     // Idempotency
     const existing = await this.prisma.deliveries.findFirst({
-      where: { prescription_id: params.prescriptionId, status: { not: 'CANCELLED' } },
+      where: {
+        prescription_id: params.prescriptionId,
+        status: { not: 'CANCELLED' },
+      },
     });
 
     if (existing) {
@@ -406,13 +474,19 @@ export class TriggerEngine {
           actor_type: 'SYSTEM',
           payload: {
             message: `Delivery scheduled to ${params.address}. ETA: within 2 hours.`,
-            deliveryId: delivery.delivery_id
+            deliveryId: delivery.delivery_id,
           },
         },
       });
     }
 
-    await this.audit.log('TRIGGER_ENGINE', 'MEDICINE_DELIVERY_TRIGGER', 'deliveries', delivery.delivery_id, params);
+    await this.audit.log(
+      'TRIGGER_ENGINE',
+      'MEDICINE_DELIVERY_TRIGGER',
+      'deliveries',
+      delivery.delivery_id,
+      params,
+    );
     return { delivery, isNew: true };
   }
 
@@ -472,7 +546,13 @@ export class TriggerEngine {
       return appointment;
     });
 
-    await this.audit.log('TRIGGER_ENGINE', 'SPECIALIST_BOOKING_TRIGGER', 'appointments', result.appointment_id, params);
+    await this.audit.log(
+      'TRIGGER_ENGINE',
+      'SPECIALIST_BOOKING_TRIGGER',
+      'appointments',
+      result.appointment_id,
+      params,
+    );
     return { appointment: result, isNew: true };
   }
 }

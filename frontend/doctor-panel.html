@@ -240,9 +240,15 @@
                     <div id="chatHistory" style="background:#fff; padding:16px; border-radius:12px; font-size:12px; max-height: 300px; overflow-y: auto;"></div>
                 </div>
                 <div class="form-section">
-                    <label>Laboratory Reports</label>
+                    <label>Laboratory Reports (Internal)</label>
                     <div id="labReports" style="background:#e0f7fa; padding:16px; border-radius:12px; font-size:13px; border: 1px dashed var(--primary);">
                         <p style="color:var(--text-muted); margin:0;">No reports available for this case.</p>
+                    </div>
+                </div>
+                <div class="form-section">
+                    <label>Patient Uploads (External)</label>
+                    <div id="patientUploads" style="background:#fff3e0; padding:16px; border-radius:12px; font-size:13px; border: 1px dashed #e65100;">
+                        <p style="color:var(--text-muted); margin:0;">No patient uploads available.</p>
                     </div>
                 </div>
             </div>
@@ -293,7 +299,25 @@
     </div>
 
     <script>
-        const API_BASE = window.location.origin + '/api/doctor';
+        // --- API Configuration ---
+        function getApiBase(subpath) {
+            const stored = localStorage.getItem('JANA_API_URL');
+            const hostname = window.location.hostname;
+            const isLocal = window.location.protocol === 'file:' || hostname === 'localhost' || hostname === '127.0.0.1';
+            
+            // Production URL
+            const PROD_URL = 'https://demo.janaai.janmitra.net';
+            // Local dev fallback
+            const LOCAL_URL = 'http://localhost:3005';
+
+            const base = stored || (isLocal ? LOCAL_URL : PROD_URL);
+            return `${base}/api/${subpath}`;
+        }
+
+
+        const API_BASE = getApiBase('doctor');
+        // -------------------------
+
         let currentSessionId = null;
         let activeCase = null;
 
@@ -364,6 +388,23 @@
                     `).join('');
                 } else {
                     labReportsDiv.innerHTML = '<p style="color:var(--text-muted); margin:0;">No reports available for this case.</p>';
+                }
+
+                // Render Patient Uploads
+                const uploads = data.case?.case_documents || [];
+                const uploadsDiv = document.getElementById('patientUploads');
+                if (uploads.length > 0) {
+                    uploadsDiv.innerHTML = uploads.map(u => `
+                        <div style="margin-bottom:10px; padding:10px; background:#fff; border-radius:8px; border-left:4px solid #e65100; display:flex; justify-content:space-between; align-items:center;">
+                            <div>
+                                <strong>${u.document_type}</strong><br>
+                                <span style="font-size:11px; color:var(--text-muted)">Uploaded: ${new Date(u.uploaded_at).toLocaleDateString()}</span>
+                            </div>
+                            <a href="${getApiBase('media').replace('media', u.file_url.slice(1))}" target="_blank" style="color:#e65100; text-decoration:none; font-weight:bold;">OPEN</a>
+                        </div>
+                    `).join('');
+                } else {
+                    uploadsDiv.innerHTML = '<p style="color:var(--text-muted); margin:0;">No patient uploads available.</p>';
                 }
 
                 // Reset form

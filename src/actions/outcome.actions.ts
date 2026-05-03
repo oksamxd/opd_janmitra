@@ -23,7 +23,13 @@ export class OutcomeActions {
     doctorId: string,
     diagnosis: string,
     advice: string,
-    medications: { name: string; dosage: string; frequency: string; duration: string; instructions?: string }[],
+    medications: {
+      name: string;
+      dosage: string;
+      frequency: string;
+      duration: string;
+      instructions?: string;
+    }[],
   ) {
     return this.prisma.$transaction(async (tx) => {
       const prescription = await tx.prescriptions.create({
@@ -49,10 +55,16 @@ export class OutcomeActions {
         });
       }
 
-      await this.audit.log('OUTCOME_ACTIONS', 'GENERATE_PRESCRIPTION', 'prescriptions', prescription.prescription_id, {
-        caseId,
-        medCount: medications.length,
-      });
+      await this.audit.log(
+        'OUTCOME_ACTIONS',
+        'GENERATE_PRESCRIPTION',
+        'prescriptions',
+        prescription.prescription_id,
+        {
+          caseId,
+          medCount: medications.length,
+        },
+      );
 
       return prescription;
     });
@@ -79,9 +91,15 @@ export class OutcomeActions {
       orders.push(order);
     }
 
-    await this.audit.log('OUTCOME_ACTIONS', 'CREATE_TEST_ORDERS', 'test_orders', caseId, {
-      testCount: tests.length,
-    });
+    await this.audit.log(
+      'OUTCOME_ACTIONS',
+      'CREATE_TEST_ORDERS',
+      'test_orders',
+      caseId,
+      {
+        testCount: tests.length,
+      },
+    );
 
     return orders;
   }
@@ -99,10 +117,16 @@ export class OutcomeActions {
       },
     });
 
-    await this.audit.log('OUTCOME_ACTIONS', 'CREATE_REFERRAL', 'referrals', referral.referral_id, {
-      caseId,
-      specialty,
-    });
+    await this.audit.log(
+      'OUTCOME_ACTIONS',
+      'CREATE_REFERRAL',
+      'referrals',
+      referral.referral_id,
+      {
+        caseId,
+        specialty,
+      },
+    );
 
     return referral;
   }

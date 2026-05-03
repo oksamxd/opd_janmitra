@@ -1,20 +1,19 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Member } from './member.entity';
+import { PrismaService } from '../prisma.service';
 
 @Injectable()
 export class MembersService {
-  constructor(
-    @InjectRepository(Member)
-    private memberRepository: Repository<Member>,
-  ) {}
+  constructor(private prisma: PrismaService) {}
 
-  create(data: Partial<Member>) {
-    return this.memberRepository.save(data);
+  create(data: { full_name: string; email?: string; phone?: string; address?: string }) {
+    return this.prisma.members.create({ data });
   }
 
   findAll() {
-    return this.memberRepository.find();
+    return this.prisma.members.findMany();
+  }
+
+  findOne(member_id: string) {
+    return this.prisma.members.findUnique({ where: { member_id } });
   }
 }

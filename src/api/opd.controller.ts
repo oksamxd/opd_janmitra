@@ -41,12 +41,15 @@ export class OpdController {
    * POST /api/create-case
    */
   @Post('create-case')
-  async createCase(@Body() body: {
-    memberId: string;
-    description: string;
-    triageData?: any;
-    consultationType?: string;
-  }) {
+  async createCase(
+    @Body()
+    body: {
+      memberId: string;
+      description: string;
+      triageData?: any;
+      consultationType?: string;
+    },
+  ) {
     const result = await this.triggers.caseCrationTrigger({
       memberId: body.memberId,
       description: body.description,
@@ -61,7 +64,10 @@ export class OpdController {
    */
   @Post('assign-doctor')
   async assignDoctor(@Body() body: { caseId: string; doctorId: string }) {
-    const doctor = await this.doctorActions.assignDoctor(body.caseId, body.doctorId);
+    const doctor = await this.doctorActions.assignDoctor(
+      body.caseId,
+      body.doctorId,
+    );
     return { success: true, data: doctor };
   }
 
@@ -69,7 +75,9 @@ export class OpdController {
    * POST /api/book-appointment
    */
   @Post('book-appointment')
-  async bookAppointment(@Body() body: { caseId: string; doctorId: string; slotId: string }) {
+  async bookAppointment(
+    @Body() body: { caseId: string; doctorId: string; slotId: string },
+  ) {
     const result = await this.triggers.appointmentBookedTrigger({
       caseId: body.caseId,
       doctorId: body.doctorId,
@@ -82,13 +90,22 @@ export class OpdController {
    * POST /api/create-prescription
    */
   @Post('create-prescription')
-  async createPrescription(@Body() body: {
-    caseId: string;
-    doctorId: string;
-    diagnosis: string;
-    advice: string;
-    medications: { name: string; dosage: string; frequency: string; duration: string; instructions?: string }[];
-  }) {
+  async createPrescription(
+    @Body()
+    body: {
+      caseId: string;
+      doctorId: string;
+      diagnosis: string;
+      advice: string;
+      medications: {
+        name: string;
+        dosage: string;
+        frequency: string;
+        duration: string;
+        instructions?: string;
+      }[];
+    },
+  ) {
     const result = await this.outcomeActions.generatePrescription(
       body.caseId,
       body.doctorId,
@@ -103,11 +120,13 @@ export class OpdController {
    * POST /api/create-test-order
    */
   @Post('create-test-order')
-  async createTestOrder(@Body() body: {
-    caseId: string;
-    tests: { name: string; type: string }[];
-  }) {
-    const result = await this.outcomeActions.createTestOrders(body.caseId, body.tests);
+  async createTestOrder(
+    @Body() body: { caseId: string; tests: { name: string; type: string }[] },
+  ) {
+    const result = await this.outcomeActions.createTestOrders(
+      body.caseId,
+      body.tests,
+    );
     return { success: true, data: result };
   }
 
@@ -115,12 +134,14 @@ export class OpdController {
    * POST /api/create-referral
    */
   @Post('create-referral')
-  async createReferral(@Body() body: {
-    caseId: string;
-    specialty: string;
-    reason: string;
-  }) {
-    const result = await this.outcomeActions.createReferral(body.caseId, body.specialty, body.reason);
+  async createReferral(
+    @Body() body: { caseId: string; specialty: string; reason: string },
+  ) {
+    const result = await this.outcomeActions.createReferral(
+      body.caseId,
+      body.specialty,
+      body.reason,
+    );
     return { success: true, data: result };
   }
 
@@ -128,10 +149,9 @@ export class OpdController {
    * POST /api/schedule-diagnostic
    */
   @Post('schedule-diagnostic')
-  async scheduleDiagnostic(@Body() body: {
-    testOrderId: string;
-    scheduledAt: string;
-  }) {
+  async scheduleDiagnostic(
+    @Body() body: { testOrderId: string; scheduledAt: string },
+  ) {
     const result = await this.deliveryActions.scheduleDiagnostic(
       body.testOrderId,
       new Date(body.scheduledAt),
@@ -143,11 +163,13 @@ export class OpdController {
    * POST /api/arrange-delivery
    */
   @Post('arrange-delivery')
-  async arrangeDelivery(@Body() body: {
-    prescriptionId: string;
-    address: string;
-  }) {
-    const result = await this.deliveryActions.arrangeDelivery(body.prescriptionId, body.address);
+  async arrangeDelivery(
+    @Body() body: { prescriptionId: string; address: string },
+  ) {
+    const result = await this.deliveryActions.arrangeDelivery(
+      body.prescriptionId,
+      body.address,
+    );
     return { success: true, data: result };
   }
 

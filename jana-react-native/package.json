@@ -1,0 +1,33 @@
+{
+  "name": "jana-react-native",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web",
+    "build-apks": "powershell -ExecutionPolicy Bypass -File ./build_apks.ps1",
+    "build-member": "SET APP_VARIANT=member && npx expo prebuild --platform android --no-install && cd android && ./gradlew assembleRelease",
+    "build-associate": "SET APP_VARIANT=associate && npx expo prebuild --platform android --no-install && cd android && ./gradlew assembleRelease"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "~6.1.2",
+    "@expo/vector-icons": "^15.0.3",
+    "axios": "^1.15.2",
+    "expo": "~54.0.33",
+    "expo-av": "~16.0.8",
+    "expo-constants": "~18.0.13",
+    "expo-document-picker": "~14.0.8",
+    "expo-status-bar": "~3.0.9",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-safe-area-context": "~5.6.0",
+    "react-native-sse": "^1.2.1",
+    "react-native-url-polyfill": "^3.0.0",
+    "react-native-web": "^0.21.0",
+    "uuid": "^14.0.0"
+  },
+  "private": true
+}

@@ -27,6 +27,7 @@ import {
   STATE_LABELS,
   STATE_EXPECTATIONS,
   transition,
+  getNextStates,
   getProgressPercent,
   getAllStatesOrdered,
 } from '../engine/state-machine';
@@ -60,6 +61,35 @@ export interface JanaResponse {
   autoAdvance?: boolean;
 }
 
+// ─── MILESTONES ─────────────────────────────────────────────────────────────
+
+export const MILESTONE_STATES: Partial<Record<OpdState, { title: string; message: string }>> = {
+  [OpdState.TRIAGED]: {
+    title: 'Symptoms Assessed',
+    message: 'Your symptoms have been successfully assessed and triaged.',
+  },
+  [OpdState.CASE_CREATED]: {
+    title: 'Case Created',
+    message: 'A professional medical case has been created for your consultation.',
+  },
+  [OpdState.APPOINTMENT_BOOKED]: {
+    title: 'Appointment Booked',
+    message: 'Your appointment has been confirmed and scheduled.',
+  },
+  [OpdState.CONSULTATION_COMPLETED]: {
+    title: 'Consultation Complete',
+    message: 'The doctor has completed your clinical review.',
+  },
+  [OpdState.OUTCOME_GENERATED]: {
+    title: 'Outcomes Ready',
+    message: 'Your prescription and clinical recommendations are now available.',
+  },
+  [OpdState.TEST_COMPLETED]: {
+    title: 'Laboratory Reports Ready',
+    message: 'Your diagnostic test results have been uploaded by the laboratory.',
+  },
+};
+
 // ─── SERVICE ────────────────────────────────────────────────────────────────
 
 @Injectable()
@@ -81,33 +111,123 @@ export class JanaOrchestratorService {
 
   // ─── MAIN ENTRY POINT ────────────────────────────────────────────────────
 
-  async handleMessage(sessionId: string, message: string, language: string = 'English'): Promise<JanaResponse> {
+  async handleMessage(
+    sessionId: string,
+    message: string,
+    language: string = 'English',
+    bypassHumanCheck: boolean = false,
+  ): Promise<JanaResponse> {
     try {
       let session = await this.loadSession(sessionId);
-      if (!session) session = await this.createSession(sessionId);
+      if (!session) {
+        try {
+          session = await this.createSession(sessionId);
+        } catch (e) {
+          // Race condition fallback: If create failed, it's likely already created by a concurrent request
+          session = await this.loadSession(sessionId);
+          if (!session) throw e; // Still null? Then it's a real error
+        }
+      }
 
-      // Save language preference in inputs if provided
+      // ─── JANMITRA HANDOFF BYPASS ─────────────────────────────────────────
+      // If session is under human control, AI must NOT respond UNLESS it's a Janmitra trigger OR a structured interaction (UUID)
+      const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(message);
+      if ((session as any).controlled_by === 'HUMAN' && !bypassHumanCheck && !isUuid) {
+        const inputs = (session.collected_inputs as any) || {};
+        return {
+          message:
+            '⚠️ This session is currently managed by a **Janmitra Associate**. Please wait for their response, or use the handoff panel to return to AI assistance.',
+          type: 'text',
+          action: 'HUMAN_CONTROLLED',
+          data: {
+            controlledBy: 'HUMAN',
+            janmitraId: (session as any).janmitra_id,
+          },
+          state: session.opd_state,
+          stateLabel:
+            STATE_LABELS[session.opd_state as OpdState] || session.opd_state,
+          progress: getProgressPercent(session.opd_state as OpdState),
+          sessionId,
+        };
+      }
+
+      // Save language preference in DB and inputs if provided
       const inputs = (session.collected_inputs as any) || {};
       inputs.language = language;
 
+      // Persist language preference to session row
+      if (language && (session as any).language_preference !== language) {
+        await this.prisma.opd_sessions
+          .update({
+            where: { session_id: sessionId },
+            data: { language_preference: language } as any,
+          })
+          .catch(() => null);
+      }
+
       const currentState = session.opd_state as OpdState;
-      this.logger.log(`[${sessionId}] State: ${currentState} | Language: ${language} | Msg: "${message}"`);
+      this.logger.log(
+        `[${sessionId}] State: ${currentState} | Language: ${language} | Msg: "${message}"`,
+      );
 
-      const result = await this.processState(session, currentState, message, language);
-      await this.saveSession(session.session_id, result.newState, result.inputs, result.aiHistory);
+      // ─── MILESTONE GATE ──────────────────────────────────────────────────
+      // If user says "proceed", we force an auto-advance signal to the next state
+      if (message.toLowerCase() === 'proceed_to_next_step') {
+        const nextStates = getNextStates(currentState);
+        if (nextStates.length > 0) {
+          // Transitions to the first logical next state
+          const nextState = nextStates[0];
+          await this.saveSession(sessionId, nextState, inputs, session.ai_history as any[]);
+          
+          // Re-load session with new state and process with __auto_advance__
+          const updatedSession = await this.loadSession(sessionId);
+          const result = await this.processState(
+            updatedSession,
+            nextState,
+            '__auto_advance__',
+            language,
+          );
+          await this.saveSession(
+            sessionId,
+            result.newState,
+            result.inputs,
+            result.aiHistory,
+          );
+          return this.buildResponse(sessionId, result);
+        }
+      }
+
+      const result = await this.processState(
+        session,
+        currentState,
+        message,
+        language,
+      );
+      await this.saveSession(
+        session.session_id,
+        result.newState,
+        result.inputs,
+        result.aiHistory,
+      );
       return this.buildResponse(session.session_id, result);
-
     } catch (error) {
       this.logger.error(`Orchestrator error: ${error}`);
-      await this.audit.logError('ORCHESTRATOR', 'HANDLE_MESSAGE', 'opd_sessions', sessionId, error as Error);
+      
+      // Try to recover current state context for a better error message
+      const session = await this.loadSession(sessionId).catch(() => null);
+      const state = (session?.opd_state as OpdState) || OpdState.NEW;
+      const stateLabel = STATE_LABELS[state] || 'Consultation';
+      const expectation = STATE_EXPECTATIONS[state];
+      const prompt = expectation ? expectation.prompt : 'How can I help you?';
+
       return {
-        message: 'I apologize for the inconvenience. Something went wrong. Could you please repeat your last response?',
+        message: `I apologize for the inconvenience, something went wrong while processing your request. We are currently at the **${stateLabel}** stage.\n\n${prompt}`,
         type: 'text',
         action: 'ERROR_RECOVERY',
         data: { error: (error as Error).message },
-        state: 'ERROR',
-        stateLabel: 'Error',
-        progress: 0,
+        state: state,
+        stateLabel: stateLabel,
+        progress: getProgressPercent(state),
         sessionId,
       };
     }
@@ -122,21 +242,79 @@ export class JanaOrchestratorService {
     const expectation = STATE_EXPECTATIONS[state];
     const inputs = session.collected_inputs as any;
 
+    // RULE: Never restart an active case.
+    // If we are past NEW state, restore context and resume.
+    const memberName = inputs.memberName || 'there';
+    const caseId = inputs.caseId || session.case_id || null;
+    const doctorName = inputs.doctorName || null;
+    const controlledBy = (session as any).controlled_by || 'AI';
+
+    // ─── CHECK FOR MILESTONE CONTINUITY ────────────────────────────────────
+    let isAtMilestone = false;
+    let milestoneInfo: { title: string; message: string } | null = null;
+    if (caseId && MILESTONE_STATES[state]) {
+      const lastEvent = await this.prisma.case_events.findFirst({
+        where: {
+          case_id: caseId,
+          event_type: 'STEP_COMPLETED',
+          payload: { path: ['state'], equals: state },
+        },
+        orderBy: { created_at: 'desc' },
+      });
+
+      if (lastEvent) {
+        isAtMilestone = true;
+        milestoneInfo = MILESTONE_STATES[state];
+      }
+    }
+
+    const resumeContext = [
+      memberName !== 'there' ? `Member: ${memberName}` : '',
+      caseId ? `Active case ID: ${caseId.slice(-8)}` : '',
+      doctorName ? `Assigned doctor: ${doctorName}` : '',
+      `Current step: ${STATE_LABELS[state]}`,
+    ]
+      .filter(Boolean)
+      .join('. ');
+
+    let systemPrompt = `The patient has returned to their session. ${resumeContext}. ${expectation.prompt}. Welcome them back warmly, remind them exactly where they left off, and guide them to continue.`;
+
+    if (isAtMilestone && milestoneInfo) {
+      systemPrompt = `The patient has returned. ${resumeContext}. Milestone reached: ${milestoneInfo.title}. ${milestoneInfo.message}. Warmly welcome them back, tell them this step was completed, and ask if they are ready to proceed to the next step.`;
+    }
+
     const message = await this.aiService.formatResponse({
       currentState: state,
       stateLabel: STATE_LABELS[state],
-      systemPrompt: `The patient has returned to their session. They were at the "${STATE_LABELS[state]}" step. ${expectation.prompt}. Welcome them back and remind them where they left off.`,
+      systemPrompt,
       data: inputs,
-      language: inputs.language,
+      language:
+        inputs.language || (session as any).language_preference || 'English',
     });
 
-    const options = this.buildOptions(expectation.options || []);
+    let options = this.buildOptions(expectation.options || []);
+    if (isAtMilestone) {
+      options = [
+        { label: '✅ Yes, proceed to next step', value: 'proceed_to_next_step' },
+        ...options,
+      ];
+    }
+
     return {
       message,
       type: options.length > 0 ? 'options' : 'text',
       options,
-      action: 'SESSION_RESUMED',
-      data: { currentState: state, inputs },
+      action: isAtMilestone ? 'MILESTONE_REACHED' : 'SESSION_RESUMED',
+      data: {
+        currentState: state,
+        inputs,
+        controlledBy,
+        caseId,
+        memberName,
+        doctorName,
+        isAtMilestone,
+        languagePreference: (session as any).language_preference || 'English',
+      },
       state,
       stateLabel: STATE_LABELS[state],
       progress: getProgressPercent(state),
@@ -146,62 +324,147 @@ export class JanaOrchestratorService {
 
   // ─── MAIN STATE ROUTER ───────────────────────────────────────────────────
 
-  private async processState(session: any, currentState: OpdState, message: string, language: string) {
-    const inputs = (session.collected_inputs as any) || {};
-    const aiHistory = (session.ai_history as any) || [];
+  private async processState(
+    session: any,
+    currentState: OpdState,
+    message: string,
+    language: string,
+  ) {
+    const inputs = session.collected_inputs || {};
+    const aiHistory = session.ai_history || [];
 
     switch (currentState) {
       // Member identification
-      case OpdState.NEW:               return this.handleNew(session, message, inputs, aiHistory);
-      case OpdState.CHECK_MEMBER:      return this.handleCheckMember(session, message, inputs, aiHistory);
-      case OpdState.CREATE_MEMBER:     return this.handleCreateMember(session, message, inputs, aiHistory);
-      case OpdState.ASK_NAME:          return this.handleAskName(session, message, inputs, aiHistory);
-      case OpdState.ASK_AGE:           return this.handleAskAge(session, message, inputs, aiHistory);
-      case OpdState.ASK_GENDER:        return this.handleAskGender(session, message, inputs, aiHistory);
-      case OpdState.ASK_HEIGHT:        return this.handleAskHeight(session, message, inputs, aiHistory);
-      case OpdState.ASK_WEIGHT:        return this.handleAskWeight(session, message, inputs, aiHistory);
-      case OpdState.ASK_BLOOD_GROUP:   return this.handleAskBloodGroup(session, message, inputs, aiHistory);
+      case OpdState.NEW:
+        return this.handleNew(session, message, inputs, aiHistory);
+      case OpdState.CHECK_MEMBER:
+        return this.handleCheckMember(session, message, inputs, aiHistory);
+      case OpdState.CREATE_MEMBER:
+        return this.handleCreateMember(session, message, inputs, aiHistory);
+      case OpdState.ASK_NAME:
+        return this.handleAskName(session, message, inputs, aiHistory);
+      case OpdState.ASK_AGE:
+        return this.handleAskAge(session, message, inputs, aiHistory);
+      case OpdState.ASK_GENDER:
+        return this.handleAskGender(session, message, inputs, aiHistory);
+      case OpdState.ASK_HEIGHT:
+        return this.handleAskHeight(session, message, inputs, aiHistory);
+      case OpdState.ASK_WEIGHT:
+        return this.handleAskWeight(session, message, inputs, aiHistory);
+      case OpdState.ASK_BLOOD_GROUP:
+        return this.handleAskBloodGroup(session, message, inputs, aiHistory);
 
       // Legacy registration (kept for compatibility)
-      case OpdState.REGISTERING_NAME:  return this.handleRegisteringName(session, message, inputs, aiHistory);
-      case OpdState.REGISTERING_EMAIL: return this.handleRegisteringEmail(session, message, inputs, aiHistory);
+      case OpdState.REGISTERING_NAME:
+        return this.handleRegisteringName(session, message, inputs, aiHistory);
+      case OpdState.REGISTERING_EMAIL:
+        return this.handleRegisteringEmail(session, message, inputs, aiHistory);
 
       // Triage + clinical
-      case OpdState.ID_VERIFIED:              return this.handleTriage(session, message, inputs, aiHistory);
-      case OpdState.TRIAGED:                  return this.handleEmergencyCheck(session, message, inputs, aiHistory);
-      case OpdState.EMERGENCY_CHECKED:        return this.handleMedicalRecord(session, message, inputs, aiHistory);
-      case OpdState.MEDICAL_RECORD_READY:     return this.handleConsultationDecision(session, message, inputs, aiHistory);
-      case OpdState.CONSULTATION_DECIDED:     return this.handleCaseCreation(session, message, inputs, aiHistory);
+      case OpdState.ID_VERIFIED:
+        return this.handleTriage(session, message, inputs, aiHistory);
+      case OpdState.TRIAGED:
+        return this.handleEmergencyCheck(session, message, inputs, aiHistory);
+      case OpdState.EMERGENCY_CHECKED:
+        return this.handleMedicalRecord(session, message, inputs, aiHistory);
+      case OpdState.MEDICAL_RECORD_READY:
+        return this.handleConsultationDecision(
+          session,
+          message,
+          inputs,
+          aiHistory,
+        );
+      case OpdState.CONSULTATION_DECIDED:
+        return this.handleCaseCreation(session, message, inputs, aiHistory);
 
       // Guided appointment booking
-      case OpdState.CASE_CREATED:             return this.handleAppointmentInit(session, message, inputs, aiHistory);
-      case OpdState.APPOINTMENT_INIT:         return this.handleAskTimePreference(session, message, inputs, aiHistory);
-      case OpdState.ASK_TIME_PREFERENCE:      return this.handleAskDoctorPreference(session, message, inputs, aiHistory);
-      case OpdState.ASK_DOCTOR_PREFERENCE:    return this.handleShowDoctors(session, message, inputs, aiHistory);
-      case OpdState.SHOW_DOCTORS:             return this.handleSelectDoctor(session, message, inputs, aiHistory);
-      case OpdState.SELECT_DOCTOR:            return this.handleAskDate(session, message, inputs, aiHistory);
-      case OpdState.ASK_DATE:                 return this.handleShowSlots(session, message, inputs, aiHistory);
-      case OpdState.SHOW_SLOTS:               return this.handleConfirmBooking(session, message, inputs, aiHistory);
-      case OpdState.CONFIRM_BOOKING:          return this.handleBookingConfirmed(session, message, inputs, aiHistory);
-      case OpdState.DOCTOR_ASSIGNED:          return this.handleFinalizeAppointment(session, message, inputs, aiHistory);
+      case OpdState.CASE_CREATED:
+        return this.handleAppointmentInit(session, message, inputs, aiHistory);
+      case OpdState.APPOINTMENT_INIT:
+        return this.handleAskTimePreference(
+          session,
+          message,
+          inputs,
+          aiHistory,
+        );
+      case OpdState.ASK_TIME_PREFERENCE:
+        return this.handleAskDoctorPreference(
+          session,
+          message,
+          inputs,
+          aiHistory,
+        );
+      case OpdState.ASK_DOCTOR_PREFERENCE:
+        return this.handleAskPrimaryDoctor(session, message, inputs, aiHistory);
+      case OpdState.ASK_PRIMARY_DOCTOR:
+        return this.handleShowDoctors(session, message, inputs, aiHistory);
+      case OpdState.SHOW_DOCTORS:
+        return this.handleSelectDoctor(session, message, inputs, aiHistory);
+      case OpdState.SELECT_DOCTOR:
+        return this.handleAskDate(session, message, inputs, aiHistory);
+      case OpdState.ASK_DATE:
+        return this.handleShowSlots(session, message, inputs, aiHistory);
+      case OpdState.SHOW_SLOTS:
+        return this.handleConfirmBooking(session, message, inputs, aiHistory);
+      case OpdState.CONFIRM_BOOKING:
+        return this.handleBookingConfirmed(session, message, inputs, aiHistory);
+      case OpdState.DOCTOR_ASSIGNED:
+        return this.handleFinalizeAppointment(
+          session,
+          message,
+          inputs,
+          aiHistory,
+        );
 
       // Consultation pipeline
-      case OpdState.APPOINTMENT_BOOKED:       return this.handlePreConsultation(session, message, inputs, aiHistory);
-      case OpdState.PRE_CONSULTATION:         return this.handleStartConsultation(session, message, inputs, aiHistory);
-      case OpdState.CONSULTATION_IN_PROGRESS: return this.handleConsultation(session, message, inputs, aiHistory);
-      case OpdState.CONSULTATION_COMPLETED:   return this.handleOutcomeGeneration(session, message, inputs, aiHistory);
-      case OpdState.OUTCOME_GENERATED:        return this.handleOutcomeGenerated(session, message, inputs, aiHistory);
-      case OpdState.SCHEDULE_TESTS:           return this.handleScheduleTests(session, message, inputs, aiHistory);
-      case OpdState.ASK_DELIVERY_CONSENT:     return this.handleAskDeliveryConsent(session, message, inputs, aiHistory);
-      case OpdState.ASK_DELIVERY_ADDRESS:     return this.handleAskDeliveryAddress(session, message, inputs, aiHistory);
-      case OpdState.FOLLOWUP_PENDING:         return this.handleFollowup(session, message, inputs, aiHistory);
-      case OpdState.TEST_COMPLETED:           return this.handleTestCompleted(session, message, inputs, aiHistory);
-      case OpdState.CLOSED:                   return this.handleClosed(session, message, inputs, aiHistory);
+      case OpdState.APPOINTMENT_BOOKED:
+        return this.handlePreConsultation(session, message, inputs, aiHistory);
+      case OpdState.PRE_CONSULTATION:
+        return this.handleStartConsultation(
+          session,
+          message,
+          inputs,
+          aiHistory,
+        );
+      case OpdState.CONSULTATION_IN_PROGRESS:
+        return this.handleConsultation(session, message, inputs, aiHistory);
+      case OpdState.CONSULTATION_COMPLETED:
+        return this.handleOutcomeGeneration(
+          session,
+          message,
+          inputs,
+          aiHistory,
+        );
+      case OpdState.OUTCOME_GENERATED:
+        return this.handleOutcomeGenerated(session, message, inputs, aiHistory);
+      case OpdState.SCHEDULE_TESTS:
+        return this.handleScheduleTests(session, message, inputs, aiHistory);
+      case OpdState.ASK_DELIVERY_CONSENT:
+        return this.handleAskDeliveryConsent(
+          session,
+          message,
+          inputs,
+          aiHistory,
+        );
+      case OpdState.ASK_DELIVERY_ADDRESS:
+        return this.handleAskDeliveryAddress(
+          session,
+          message,
+          inputs,
+          aiHistory,
+        );
+      case OpdState.FOLLOWUP_PENDING:
+        return this.handleFollowup(session, message, inputs, aiHistory);
+      case OpdState.TEST_COMPLETED:
+        return this.handleTestCompleted(session, message, inputs, aiHistory);
+      case OpdState.CLOSED:
+        return this.handleClosed(session, message, inputs, aiHistory);
 
       default:
         return {
           newState: currentState,
-          responseMessage: 'I seem to have lost track. Let me restart your session.',
+          responseMessage:
+            'I seem to have lost track. Let me restart your session.',
           type: 'text' as const,
           options: [] as JanaOption[],
           actionName: 'UNKNOWN_STATE',
@@ -216,19 +479,29 @@ export class JanaOrchestratorService {
   // MEMBER IDENTIFICATION HANDLERS
   // ═══════════════════════════════════════════════════════════════════════════
 
-  private async handleNew(session: any, message: string, inputs: any, aiHistory: any[]) {
-    const memberId = message.trim();
+  private async handleNew(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
+    const input = message.trim();
 
     // Route to member creation
-    if (memberId === 'CREATE_NEW_MEMBER' || memberId.toLowerCase().includes('create') || memberId.toLowerCase().includes('new')) {
+    if (
+      input === 'CREATE_NEW_MEMBER' ||
+      input.toLowerCase().includes('create') ||
+      input.toLowerCase().includes('new')
+    ) {
       const newState = transition(OpdState.NEW, OpdState.CREATE_MEMBER);
       return {
         newState,
-        responseMessage: "I couldn't find an existing account for you. Would you like to create a new one? It only takes a minute! 😊",
+        responseMessage:
+          "I couldn't find an existing account for you. Would you like to create a new one? It only takes a minute! 😊",
         type: 'options' as const,
         options: [
           { label: '✅ Yes, create my account', value: 'yes_create' },
-          { label: '❌ No, I have a Member ID', value: 'no_have_id' },
+          { label: '❌ No, I have a Phone Number', value: 'no_have_id' },
         ],
         actionName: 'PROMPT_CREATE_MEMBER',
         data: {},
@@ -238,95 +511,106 @@ export class JanaOrchestratorService {
     }
 
     // Handle initialization signal or invalid input
-    if (memberId === '__INIT__' || !memberId || memberId.length < 5) {
+    if (input === '__INIT__' || !input) {
       return {
         newState: OpdState.NEW,
-        responseMessage: "Welcome to Jana AI! 👋 How can I help you today? Do you already have a **Member ID** or would you like to **create a new medical record**?",
+        responseMessage:
+          'Welcome to Jana AI! 👋 How can I help you today? Do you already have a **medical record** with us? Please provide your **Phone Number** to begin.',
         type: 'options' as const,
         options: [
-          { label: '🔑 I have a Member ID', value: 'no_have_id' },
+          { label: '📞 I have a Phone Number', value: 'no_have_id' },
           { label: '🆕 Create New account', value: 'CREATE_NEW_MEMBER' },
         ],
-        actionName: 'AWAITING_MEMBER_ID',
+        actionName: 'AWAITING_PHONE_NUMBER',
         data: {},
         inputs,
         aiHistory,
       };
     }
 
-    // Patient clicked "I have a Member ID"
-    if (memberId === 'no_have_id') {
+    // Patient clicked "I have a Phone Number"
+    if (input === 'no_have_id') {
       return {
         newState: OpdState.NEW,
-        responseMessage: "Please enter your **Member ID** below so I can retrieve your records.",
+        responseMessage: 'Please enter your **Phone Number** below so I can retrieve your records.',
         type: 'text' as const,
-        options: [] as JanaOption[],
-        actionName: 'ENTER_MEMBER_ID',
+        actionName: 'AWAITING_PHONE_INPUT',
         data: {},
         inputs,
         aiHistory,
       };
     }
 
-    // Verify member
-    const member = await this.memberActions.verifyMember(memberId);
-    if (!member) {
+    // Attempt to verify by phone
+    const member = await this.memberActions.findMemberByPhone(input);
+    if (member) {
+      inputs.memberId = member.member_id;
+      inputs.memberName = member.full_name;
+      inputs.phone = input;
+      const newState = transition(OpdState.NEW, OpdState.ID_VERIFIED);
+      
+      const welcomeMsg = `Welcome back, ${member.full_name}! 👋 I have loaded your medical record. How are you feeling today? Please describe your symptoms, how long you have been experiencing them, and rate the severity.`;
+      aiHistory.push({ role: 'assistant', content: welcomeMsg });
+
       return {
-        newState: OpdState.NEW,
-        responseMessage: `I couldn't find a member with that ID. Please double-check and try again, or create a new account below.`,
+        newState,
+        responseMessage: welcomeMsg,
+        type: 'text' as const,
+        actionName: 'MEMBER_VERIFIED_BY_PHONE',
+        data: { memberName: member.full_name },
+        inputs,
+        aiHistory,
+      };
+    } else {
+      // Not found, prompt to create
+      inputs.newMemberPhone = input;
+      const newState = transition(OpdState.NEW, OpdState.CREATE_MEMBER);
+      return {
+        newState,
+        responseMessage:
+          `I couldn't find a record for the phone number **${input}**. Would you like to create a new medical record?`,
         type: 'options' as const,
-        options: [{ label: '🆕 Create New Member', value: 'CREATE_NEW_MEMBER' }],
-        actionName: 'MEMBER_NOT_FOUND',
-        data: { attemptedId: memberId },
+        options: [
+          { label: '✅ Yes, create my record', value: 'yes_create' },
+          { label: '🔄 Try different number', value: 'no_have_id' },
+        ],
+        actionName: 'MEMBER_NOT_FOUND_PROMPT_CREATE',
+        data: { attemptedPhone: input },
         inputs,
         aiHistory,
       };
     }
-
-    // Verified!
-    inputs.memberId = memberId;
-    inputs.memberName = member.full_name;
-    const newState = transition(OpdState.NEW, OpdState.ID_VERIFIED);
-
-    // Log Event - Silenced per user request (Too early for clinical log)
-    // await this.addCaseEvent(inputs.caseId || 'SESSION_' + session.session_id, 'MEMBER_VERIFIED', { memberName: member.full_name, memberId });
-
-    const msg = await this.aiService.formatResponse({
-      currentState: newState,
-      stateLabel: STATE_LABELS[newState],
-      systemPrompt: `Member verified: ${member.full_name}. Welcome them warmly by first name and ask them to describe their symptoms, how long they've had them, and the severity (mild, moderate, severe).`,
-      data: { memberName: member.full_name },
-      history: aiHistory,
-      language: inputs.language,
-    });
-    aiHistory.push({ role: 'assistant', content: msg });
-    await this.audit.logStateTransition(session.session_id, OpdState.NEW, newState);
-
-    return {
-      newState,
-      responseMessage: msg,
-      type: 'text' as const,
-      options: [] as JanaOption[],
-      actionName: 'MEMBER_VERIFIED',
-      data: { member: { id: member.member_id, name: member.full_name } },
-      inputs,
-      aiHistory,
-    };
   }
 
-  private async handleCheckMember(session: any, message: string, inputs: any, aiHistory: any[]) {
+
+  private async handleCheckMember(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
     // Re-route same as handleNew
     return this.handleNew(session, message, inputs, aiHistory);
   }
 
-  private async handleCreateMember(session: any, message: string, inputs: any, aiHistory: any[]) {
+  private async handleCreateMember(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
     const lower = message.toLowerCase();
     // User opted in
-    if (lower.includes('yes') || lower.includes('create') || lower === 'yes_create') {
+    if (
+      lower.includes('yes') ||
+      lower.includes('create') ||
+      lower === 'yes_create'
+    ) {
       const newState = transition(OpdState.CREATE_MEMBER, OpdState.ASK_NAME);
       return {
         newState,
-        responseMessage: "Great! Let's get you set up. 🎉 What's your **full name**?",
+        responseMessage:
+          "Great! Let's get you set up. 🎉 What's your **full name**?",
         type: 'input' as const,
         options: [] as JanaOption[],
         actionName: 'ASK_NAME',
@@ -338,7 +622,8 @@ export class JanaOrchestratorService {
     // User opted out
     return {
       newState: OpdState.NEW,
-      responseMessage: "No problem! Please enter your **Member ID** to continue.",
+      responseMessage:
+        'No problem! Please enter your **Phone Number** to continue.',
       type: 'text' as const,
       options: [] as JanaOption[],
       actionName: 'BACK_TO_ID',
@@ -348,7 +633,12 @@ export class JanaOrchestratorService {
     };
   }
 
-  private async handleAskName(session: any, message: string, inputs: any, aiHistory: any[]) {
+  private async handleAskName(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
     inputs.newMemberName = message.trim();
     const newState = transition(OpdState.ASK_NAME, OpdState.ASK_AGE);
     return {
@@ -363,7 +653,12 @@ export class JanaOrchestratorService {
     };
   }
 
-  private async handleAskAge(session: any, message: string, inputs: any, aiHistory: any[]) {
+  private async handleAskAge(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
     inputs.newMemberAge = message.trim();
     const newState = transition(OpdState.ASK_AGE, OpdState.ASK_GENDER);
     return {
@@ -383,7 +678,12 @@ export class JanaOrchestratorService {
     };
   }
 
-  private async handleAskGender(session: any, message: string, inputs: any, aiHistory: any[]) {
+  private async handleAskGender(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
     inputs.newMemberGender = message.trim();
     const newState = transition(OpdState.ASK_GENDER, OpdState.ASK_HEIGHT);
     return {
@@ -398,7 +698,12 @@ export class JanaOrchestratorService {
     };
   }
 
-  private async handleAskHeight(session: any, message: string, inputs: any, aiHistory: any[]) {
+  private async handleAskHeight(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
     inputs.newMemberHeight = message.trim();
     const newState = transition(OpdState.ASK_HEIGHT, OpdState.ASK_WEIGHT);
     return {
@@ -413,7 +718,12 @@ export class JanaOrchestratorService {
     };
   }
 
-  private async handleAskWeight(session: any, message: string, inputs: any, aiHistory: any[]) {
+  private async handleAskWeight(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
     inputs.newMemberWeight = message.trim();
     const newState = transition(OpdState.ASK_WEIGHT, OpdState.ASK_BLOOD_GROUP);
     return {
@@ -421,11 +731,15 @@ export class JanaOrchestratorService {
       responseMessage: `Almost done. What is your blood group?`,
       type: 'options' as const,
       options: [
-        { label: '🩸 A+', value: 'A+' }, { label: '🩸 A-', value: 'A-' },
-        { label: '🩸 B+', value: 'B+' }, { label: '🩸 B-', value: 'B-' },
-        { label: '🩸 AB+', value: 'AB+' }, { label: '🩸 AB-', value: 'AB-' },
-        { label: '🩸 O+', value: 'O+' }, { label: '🩸 O-', value: 'O-' },
-        { label: '❓ I don\'t know', value: 'Unknown' },
+        { label: '🩸 A+', value: 'A+' },
+        { label: '🩸 A-', value: 'A-' },
+        { label: '🩸 B+', value: 'B+' },
+        { label: '🩸 B-', value: 'B-' },
+        { label: '🩸 AB+', value: 'AB+' },
+        { label: '🩸 AB-', value: 'AB-' },
+        { label: '🩸 O+', value: 'O+' },
+        { label: '🩸 O-', value: 'O-' },
+        { label: "❓ I don't know", value: 'Unknown' },
       ],
       actionName: 'COLLECTED_WEIGHT',
       data: {},
@@ -434,7 +748,12 @@ export class JanaOrchestratorService {
     };
   }
 
-  private async handleAskBloodGroup(session: any, message: string, inputs: any, aiHistory: any[]) {
+  private async handleAskBloodGroup(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
     inputs.newMemberBloodGroup = message.trim();
 
     // Create the member AND the medical record in DB
@@ -458,7 +777,7 @@ export class JanaOrchestratorService {
     const msg = await this.aiService.formatResponse({
       currentState: newState,
       stateLabel: STATE_LABELS[newState],
-      systemPrompt: `Registration complete! Their new Member ID is ${newMember.member_id}. Welcome ${newMember.full_name} warmly and let them know their account and medical record has been created successfully. Then ask them to describe their symptoms, duration, and severity.`,
+      systemPrompt: `Registration complete! Their medical record has been created successfully. Welcome ${newMember.full_name} warmly and then ask them to describe their symptoms, duration, and severity.`,
       history: aiHistory,
       language: inputs.language,
     });
@@ -478,9 +797,17 @@ export class JanaOrchestratorService {
 
   // ─── LEGACY REGISTRATION ─────────────────────────────────────────────────
 
-  private async handleRegisteringName(session: any, message: string, inputs: any, aiHistory: any[]) {
+  private async handleRegisteringName(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
     inputs.newMemberName = message.trim();
-    const newState = transition(OpdState.REGISTERING_NAME, OpdState.REGISTERING_EMAIL);
+    const newState = transition(
+      OpdState.REGISTERING_NAME,
+      OpdState.REGISTERING_EMAIL,
+    );
     const msg = await this.aiService.formatResponse({
       currentState: newState,
       stateLabel: STATE_LABELS[newState],
@@ -489,15 +816,35 @@ export class JanaOrchestratorService {
       language: inputs.language,
     });
     aiHistory.push({ role: 'assistant', content: msg });
-    return { newState, responseMessage: msg, type: 'input' as const, options: [] as JanaOption[], actionName: 'COLLECTED_NAME', data: {}, inputs, aiHistory };
+    return {
+      newState,
+      responseMessage: msg,
+      type: 'input' as const,
+      options: [] as JanaOption[],
+      actionName: 'COLLECTED_NAME',
+      data: {},
+      inputs,
+      aiHistory,
+    };
   }
 
-  private async handleRegisteringEmail(session: any, message: string, inputs: any, aiHistory: any[]) {
+  private async handleRegisteringEmail(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
     inputs.newMemberEmail = message.trim();
-    const newMember = await this.memberActions.createMemberWithMedicalRecord({ full_name: inputs.newMemberName, email: inputs.newMemberEmail });
+    const newMember = await this.memberActions.createMemberWithMedicalRecord({
+      full_name: inputs.newMemberName,
+      email: inputs.newMemberEmail,
+    });
     inputs.memberId = newMember.member_id;
     inputs.memberName = newMember.full_name;
-    const newState = transition(OpdState.REGISTERING_EMAIL, OpdState.ID_VERIFIED);
+    const newState = transition(
+      OpdState.REGISTERING_EMAIL,
+      OpdState.ID_VERIFIED,
+    );
     const msg = await this.aiService.formatResponse({
       currentState: newState,
       stateLabel: STATE_LABELS[newState],
@@ -506,20 +853,41 @@ export class JanaOrchestratorService {
       language: inputs.language,
     });
     aiHistory.push({ role: 'assistant', content: msg });
-    return { newState, responseMessage: msg, type: 'text' as const, options: [] as JanaOption[], actionName: 'MEMBER_REGISTERED', data: { member: { id: newMember.member_id, name: newMember.full_name } }, inputs, aiHistory };
+    return {
+      newState,
+      responseMessage: msg,
+      type: 'text' as const,
+      options: [] as JanaOption[],
+      actionName: 'MEMBER_REGISTERED',
+      data: { member: { id: newMember.member_id, name: newMember.full_name } },
+      inputs,
+      aiHistory,
+    };
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // TRIAGE HANDLERS
   // ═══════════════════════════════════════════════════════════════════════════
 
-  private async handleTriage(session: any, message: string, inputs: any, aiHistory: any[]) {
+  private async handleTriage(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
     const triage = await this.aiService.parseTriage(message);
     const severity = assessSeverity(message, triage.duration);
     const { specialty, matchedKeywords } = mapSymptomsToSpecialty(message);
 
     inputs.triageInput = message;
-    inputs.triage = { symptoms: triage.symptoms, duration: triage.duration, severity, specialty, matchedKeywords, rawText: triage.rawText };
+    inputs.triage = {
+      symptoms: triage.symptoms,
+      duration: triage.duration,
+      severity,
+      specialty,
+      matchedKeywords,
+      rawText: triage.rawText,
+    };
 
     const newState = transition(OpdState.ID_VERIFIED, OpdState.TRIAGED);
     aiHistory.push({ role: 'user', content: message });
@@ -533,13 +901,30 @@ export class JanaOrchestratorService {
     });
     aiHistory.push({ role: 'assistant', content: msg });
 
-    // Log triage event - Silenced per user request (Too early for clinical log)
-    // await this.addCaseEvent('PENDING_' + session.session_id, 'TRIAGE_COMPLETED', { symptoms: triage.symptoms, severity });
+    // Log milestone and create notification
+    await this.triggerMilestone(session, newState);
 
-    return { newState, responseMessage: msg, type: 'text' as const, options: [] as JanaOption[], actionName: 'TRIAGE_COMPLETE', autoAdvance: true, data: { triage: inputs.triage }, inputs, aiHistory };
+    return {
+      newState,
+      responseMessage: msg,
+      type: 'options' as const,
+      options: [
+        { label: '✅ Proceed to Case Creation', value: 'proceed_to_next_step' },
+      ],
+      actionName: 'TRIAGE_COMPLETE',
+      autoAdvance: false, // PAUSE FOR PERMISSION
+      data: { triage: inputs.triage },
+      inputs,
+      aiHistory,
+    };
   }
 
-  private async handleEmergencyCheck(session: any, message: string, inputs: any, aiHistory: any[]) {
+  private async handleEmergencyCheck(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
     const emergency = isEmergency(inputs.triageInput || '');
     inputs.isEmergency = emergency;
     const newState = transition(OpdState.TRIAGED, OpdState.EMERGENCY_CHECKED);
@@ -548,85 +933,162 @@ export class JanaOrchestratorService {
       const msg = await this.aiService.formatResponse({
         currentState: newState,
         stateLabel: STATE_LABELS[newState],
-        systemPrompt: '⚠️ EMERGENCY. Patient has critical symptoms. Ask for their current address immediately for emergency dispatch. Be urgent but calm.',
+        systemPrompt:
+          '⚠️ EMERGENCY. Patient has critical symptoms. Ask for their current address immediately for emergency dispatch. Be urgent but calm.',
         data: { emergency: true },
         history: aiHistory,
         language: inputs.language,
       });
       inputs.emergencyFlow = true;
       aiHistory.push({ role: 'assistant', content: msg });
-      return { newState, responseMessage: msg, type: 'input' as const, options: [] as JanaOption[], actionName: 'EMERGENCY_DETECTED', data: { isEmergency: true }, inputs, aiHistory };
+      return {
+        newState,
+        responseMessage: msg,
+        type: 'input' as const,
+        options: [] as JanaOption[],
+        actionName: 'EMERGENCY_DETECTED',
+        data: { isEmergency: true },
+        inputs,
+        aiHistory,
+      };
     }
 
     const msg = await this.aiService.formatResponse({
       currentState: newState,
       stateLabel: STATE_LABELS[newState],
-      systemPrompt: 'No emergency detected. Inform the patient their symptoms are being processed and their medical record is being prepared.',
+      systemPrompt:
+        'No emergency detected. Inform the patient their symptoms are being processed and their medical record is being prepared.',
       data: { emergency: false },
       history: aiHistory,
       language: inputs.language,
     });
     aiHistory.push({ role: 'assistant', content: msg });
-    return { newState, responseMessage: msg, type: 'text' as const, options: [] as JanaOption[], actionName: 'NO_EMERGENCY', autoAdvance: true, data: { isEmergency: false }, inputs, aiHistory };
+    return {
+      newState,
+      responseMessage: msg,
+      type: 'text' as const,
+      options: [] as JanaOption[],
+      actionName: 'NO_EMERGENCY',
+      autoAdvance: true,
+      data: { isEmergency: false },
+      inputs,
+      aiHistory,
+    };
   }
 
-  private async handleMedicalRecord(session: any, message: string, inputs: any, aiHistory: any[]) {
+  private async handleMedicalRecord(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
     if (inputs.emergencyFlow) {
       inputs.emergencyAddress = message;
-      const closedState = transition(OpdState.EMERGENCY_CHECKED, OpdState.CLOSED);
+      const closedState = transition(
+        OpdState.EMERGENCY_CHECKED,
+        OpdState.CLOSED,
+      );
       const msg = await this.aiService.formatResponse({
-        currentState: closedState, stateLabel: STATE_LABELS[closedState],
+        currentState: closedState,
+        stateLabel: STATE_LABELS[closedState],
         systemPrompt: `Emergency address: "${message}". Services notified. Advise to stay calm. Helpline: 108.`,
         history: aiHistory,
         language: inputs.language,
       });
-      return { newState: closedState, responseMessage: msg, type: 'text' as const, options: [] as JanaOption[], actionName: 'EMERGENCY_DISPATCHED', data: { address: message, helpline: '108' }, inputs, aiHistory };
+      return {
+        newState: closedState,
+        responseMessage: msg,
+        type: 'text' as const,
+        options: [] as JanaOption[],
+        actionName: 'EMERGENCY_DISPATCHED',
+        data: { address: message, helpline: '108' },
+        inputs,
+        aiHistory,
+      };
     }
 
-    const record = await this.memberActions.ensureMedicalRecord(inputs.memberId);
+    const record = await this.memberActions.ensureMedicalRecord(
+      inputs.memberId,
+    );
     inputs.medicalRecordId = record.medicalRecordId;
-    const newState = transition(OpdState.EMERGENCY_CHECKED, OpdState.MEDICAL_RECORD_READY);
+    const newState = transition(
+      OpdState.EMERGENCY_CHECKED,
+      OpdState.MEDICAL_RECORD_READY,
+    );
 
     const msg = await this.aiService.formatResponse({
-      currentState: newState, stateLabel: STATE_LABELS[newState],
+      currentState: newState,
+      stateLabel: STATE_LABELS[newState],
       systemPrompt: `Medical record ${record.isNew ? 'created' : 'found'}. Now ask what type of consultation they prefer: In-Person or Teleconsultation.`,
-      data: record, history: aiHistory,
+      data: record,
+      history: aiHistory,
       language: inputs.language,
     });
     aiHistory.push({ role: 'assistant', content: msg });
 
     return {
-      newState, responseMessage: msg, type: 'options' as const,
+      newState,
+      responseMessage: msg,
+      type: 'options' as const,
       options: [
         { label: '🏥 In-Person Consultation', value: 'IN_PERSON' },
         { label: '💻 Teleconsultation', value: 'TELECONSULTATION' },
       ],
-      actionName: 'MEDICAL_RECORD_READY', data: { medicalRecord: record }, inputs, aiHistory,
+      actionName: 'MEDICAL_RECORD_READY',
+      data: { medicalRecord: record },
+      inputs,
+      aiHistory,
     };
   }
 
-  private async handleConsultationDecision(session: any, message: string, inputs: any, aiHistory: any[]) {
-    const consultationType = message.toUpperCase().includes('TELE') ? 'TELECONSULTATION' : 'IN_PERSON';
+  private async handleConsultationDecision(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
+    const consultationType = message.toUpperCase().includes('TELE')
+      ? 'TELECONSULTATION'
+      : 'IN_PERSON';
     inputs.consultationType = consultationType;
-    const newState = transition(OpdState.MEDICAL_RECORD_READY, OpdState.CONSULTATION_DECIDED);
+    const newState = transition(
+      OpdState.MEDICAL_RECORD_READY,
+      OpdState.CONSULTATION_DECIDED,
+    );
     aiHistory.push({ role: 'user', content: message });
 
     const msg = await this.aiService.formatResponse({
-      currentState: newState, stateLabel: STATE_LABELS[newState],
+      currentState: newState,
+      stateLabel: STATE_LABELS[newState],
       systemPrompt: `${consultationType === 'TELECONSULTATION' ? 'Teleconsultation' : 'In-person'} selected. Say their case is being created and a doctor will be matched.`,
       history: aiHistory,
       language: inputs.language,
     });
     aiHistory.push({ role: 'assistant', content: msg });
 
-    return { newState, responseMessage: msg, type: 'text' as const, options: [] as JanaOption[], actionName: 'CONSULTATION_TYPE_SELECTED', autoAdvance: true, data: { consultationType }, inputs, aiHistory };
+    return {
+      newState,
+      responseMessage: msg,
+      type: 'text' as const,
+      options: [] as JanaOption[],
+      actionName: 'CONSULTATION_TYPE_SELECTED',
+      autoAdvance: true,
+      data: { consultationType },
+      inputs,
+      aiHistory,
+    };
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // CASE CREATION
   // ═══════════════════════════════════════════════════════════════════════════
 
-  private async handleCaseCreation(session: any, message: string, inputs: any, aiHistory: any[]) {
+  private async handleCaseCreation(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
     const result = await this.triggers.caseCrationTrigger({
       memberId: inputs.memberId,
       description: inputs.triageInput || 'OPD Consultation',
@@ -635,33 +1097,69 @@ export class JanaOrchestratorService {
     });
 
     inputs.caseId = result.case.case_id;
-    await this.prisma.opd_sessions.update({ where: { session_id: session.session_id }, data: { case_id: result.case.case_id } });
+    
+    // LINK PENDING DOCUMENTS
+    await this.linkPendingDocuments(session.session_id, result.case.case_id);
+
+    await this.prisma.opd_sessions.update({
+      where: { session_id: session.session_id },
+      data: { case_id: result.case.case_id },
+    });
 
     // Log event - Silenced per user request (First message should start at APPOINTMENT_BOOKED)
     // await this.addCaseEvent(inputs.caseId, 'CASE_CREATED', { description: inputs.triageInput });
 
-    const newState = transition(OpdState.CONSULTATION_DECIDED, OpdState.CASE_CREATED);
+    const newState = transition(
+      OpdState.CONSULTATION_DECIDED,
+      OpdState.CASE_CREATED,
+    );
     const msg = await this.aiService.formatResponse({
-      currentState: newState, stateLabel: STATE_LABELS[newState],
+      currentState: newState,
+      stateLabel: STATE_LABELS[newState],
       systemPrompt: `Case created: ${result.case.case_id}. Tell the patient their case is set up and we're now booking an appointment. Keep it brief and friendly.`,
-      data: { caseId: result.case.case_id }, history: aiHistory,
+      data: { caseId: result.case.case_id },
+      history: aiHistory,
       language: inputs.language,
     });
     aiHistory.push({ role: 'assistant', content: msg });
 
-    return { newState, responseMessage: msg, type: 'text' as const, options: [] as JanaOption[], actionName: 'CASE_CREATED', autoAdvance: true, data: { caseId: result.case.case_id }, inputs, aiHistory };
+    // Log milestone and create notification
+    await this.triggerMilestone(session, newState);
+
+    return {
+      newState,
+      responseMessage: msg,
+      type: 'options' as const,
+      options: [
+        { label: '📅 Proceed to Appointment Booking', value: 'proceed_to_next_step' },
+      ],
+      actionName: 'CASE_CREATED',
+      autoAdvance: false, // PAUSE FOR PERMISSION
+      data: { caseId: result.case.case_id },
+      inputs,
+      aiHistory,
+    };
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // GUIDED APPOINTMENT BOOKING FLOW
   // ═══════════════════════════════════════════════════════════════════════════
 
-  private async handleAppointmentInit(session: any, message: string, inputs: any, aiHistory: any[]) {
-    const newState = transition(OpdState.CASE_CREATED, OpdState.APPOINTMENT_INIT);
+  private async handleAppointmentInit(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
+    const newState = transition(
+      OpdState.CASE_CREATED,
+      OpdState.APPOINTMENT_INIT,
+    );
     // Auto-advance immediately
     return {
       newState,
-      responseMessage: "You're almost done! 🎉 Let's book your appointment. I'll guide you step by step.",
+      responseMessage:
+        "You're almost done! 🎉 Let's book your appointment. I'll guide you step by step.",
       type: 'text' as const,
       options: [] as JanaOption[],
       actionName: 'APPOINTMENT_INIT',
@@ -672,11 +1170,19 @@ export class JanaOrchestratorService {
     };
   }
 
-  private async handleAskTimePreference(session: any, message: string, inputs: any, aiHistory: any[]) {
-    const newState = transition(OpdState.APPOINTMENT_INIT, OpdState.ASK_TIME_PREFERENCE);
+  private async handleAskTimePreference(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
+    const newState = transition(
+      OpdState.APPOINTMENT_INIT,
+      OpdState.ASK_TIME_PREFERENCE,
+    );
     return {
       newState,
-      responseMessage: "What time of day works best for you? 🕐",
+      responseMessage: 'What time of day works best for you? 🕐',
       type: 'options' as const,
       options: [
         { label: '🌅 Morning (8AM–12PM)', value: 'morning' },
@@ -690,13 +1196,22 @@ export class JanaOrchestratorService {
     };
   }
 
-  private async handleAskDoctorPreference(session: any, message: string, inputs: any, aiHistory: any[]) {
+  private async handleAskDoctorPreference(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
     // Collect time preference from previous step
     inputs.timePreference = message.toLowerCase();
-    const newState = transition(OpdState.ASK_TIME_PREFERENCE, OpdState.ASK_DOCTOR_PREFERENCE);
+    const newState = transition(
+      OpdState.ASK_TIME_PREFERENCE,
+      OpdState.ASK_DOCTOR_PREFERENCE,
+    );
     return {
       newState,
-      responseMessage: "Would you like to choose a specific doctor, or should I recommend the best match for your symptoms? 🩺",
+      responseMessage:
+        'Would you like to choose a specific doctor, or should I recommend the best match for your symptoms? 🩺',
       type: 'options' as const,
       options: [
         { label: '📋 Show me available doctors', value: 'show_doctors' },
@@ -709,15 +1224,59 @@ export class JanaOrchestratorService {
     };
   }
 
-  private async handleShowDoctors(session: any, message: string, inputs: any, aiHistory: any[]) {
+  private async handleAskPrimaryDoctor(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
     inputs.doctorPreference = message.toLowerCase();
+    const newState = transition(
+      OpdState.ASK_DOCTOR_PREFERENCE,
+      OpdState.ASK_PRIMARY_DOCTOR,
+    );
+    return {
+      newState,
+      responseMessage:
+        'Do you have a primary doctor you would like to consult, or should I suggest the best doctor for you? 🩺',
+      type: 'options' as const,
+      options: [
+        { label: '👨‍⚕️ I have a primary doctor', value: 'has_primary' },
+        { label: '✨ Suggest a doctor for me', value: 'suggest' },
+      ],
+      actionName: 'ASK_PRIMARY_DOCTOR',
+      data: {},
+      inputs,
+      aiHistory,
+    };
+  }
+
+  private async handleShowDoctors(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
+    inputs.primaryDoctorResponse = message.toLowerCase();
+    const newState = transition(
+      OpdState.ASK_PRIMARY_DOCTOR,
+      OpdState.SHOW_DOCTORS,
+    );
+    // If they said "suggest", set doctorPreference to "recommend"
+    if (inputs.primaryDoctorResponse.includes('suggest')) {
+      inputs.doctorPreference = 'recommend';
+    } else {
+      inputs.doctorPreference = 'show_doctors';
+    }
     const symptomsText = inputs.triageInput || '';
-    const { doctors, specialty } = await this.doctorActions.getDoctorsBySymptoms(symptomsText);
+    const { doctors, specialty } =
+      await this.doctorActions.getDoctorsBySymptoms(symptomsText);
 
     if (doctors.length === 0) {
       return {
         newState: OpdState.ASK_DOCTOR_PREFERENCE,
-        responseMessage: "Sorry, no doctors are available right now. Please try again in a moment.",
+        responseMessage:
+          'Sorry, no doctors are available right now. Please try again in a moment.',
         type: 'options' as const,
         options: [{ label: '🔄 Try Again', value: 'show_doctors' }],
         actionName: 'NO_DOCTORS_AVAILABLE',
@@ -728,20 +1287,28 @@ export class JanaOrchestratorService {
     }
 
     // If recommend → auto-select best doctor, then ask date
-    if (inputs.doctorPreference.includes('recommend') || inputs.doctorPreference === 'recommend') {
+    if (
+      inputs.doctorPreference.includes('recommend') ||
+      inputs.doctorPreference === 'recommend'
+    ) {
       const doctor = doctors[0];
       inputs.selectedDoctorId = doctor.associate_id;
       inputs.doctorId = doctor.associate_id;
-      inputs.doctorName = doctor.full_name.startsWith('Dr.') ? doctor.full_name : `Dr. ${doctor.full_name}`;
+      inputs.doctorName = doctor.full_name.startsWith('Dr.')
+        ? doctor.full_name
+        : `Dr. ${doctor.full_name}`;
       inputs.doctorSpecialty = doctor.specialty;
-      // Validate transitions (SHOW_DOCTORS → SELECT_DOCTOR → ASK_DATE)
-      transition(OpdState.ASK_DOCTOR_PREFERENCE, OpdState.SHOW_DOCTORS);
+      // Validate transitions (SHOW_DOCTORS → SELECT_DOCTOR)
       transition(OpdState.SHOW_DOCTORS, OpdState.SELECT_DOCTOR);
       // Skip to asking the date (now based on this doctor's real availability)
-      return this.handleAskDateForDoctor(inputs, aiHistory, OpdState.SELECT_DOCTOR);
+      return this.handleAskDateForDoctor(
+        inputs,
+        aiHistory,
+        OpdState.SELECT_DOCTOR,
+      );
     }
 
-    const newState = transition(OpdState.ASK_DOCTOR_PREFERENCE, OpdState.SHOW_DOCTORS);
+    // Normal path: Show doctor cards
     return {
       newState,
       responseMessage: `Here are the available doctors matching your symptoms (${specialty}). Please select one:`,
@@ -751,21 +1318,37 @@ export class JanaOrchestratorService {
         value: d.associate_id,
       })),
       actionName: 'SHOW_DOCTORS',
-      data: { doctors: doctors.slice(0, 5).map((d) => ({ id: d.associate_id, name: d.full_name, specialty: d.specialty })), specialty },
+      data: {
+        doctors: doctors.slice(0, 5).map((d) => ({
+          id: d.associate_id,
+          name: d.full_name,
+          specialty: d.specialty,
+        })),
+        specialty,
+      },
       inputs,
       aiHistory,
     };
   }
 
-  private async handleSelectDoctor(session: any, message: string, inputs: any, aiHistory: any[]) {
+  private async handleSelectDoctor(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
     // message = doctorId
     inputs.selectedDoctorId = message.trim();
     inputs.doctorId = message.trim();
 
     // Fetch doctor details
-    const doctor = await this.prisma.associates.findUnique({ where: { associate_id: inputs.doctorId } });
+    const doctor = await this.prisma.associates.findUnique({
+      where: { associate_id: inputs.doctorId },
+    });
     if (doctor) {
-      inputs.doctorName = doctor.full_name.startsWith('Dr.') ? doctor.full_name : `Dr. ${doctor.full_name}`;
+      inputs.doctorName = doctor.full_name.startsWith('Dr.')
+        ? doctor.full_name
+        : `Dr. ${doctor.full_name}`;
       inputs.doctorSpecialty = doctor.specialty;
     }
 
@@ -774,28 +1357,43 @@ export class JanaOrchestratorService {
     return this.handleAskDateForDoctor(inputs, aiHistory, newState);
   }
 
-  private async handleAskDate(session: any, message: string, inputs: any, aiHistory: any[]) {
+  private async handleAskDate(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
     // If we reach here as a state (e.g. from an auto-advance), show the date chips
-    return this.handleAskDateForDoctor(inputs, aiHistory, OpdState.SELECT_DOCTOR);
+    return this.handleAskDateForDoctor(
+      inputs,
+      aiHistory,
+      OpdState.SELECT_DOCTOR,
+    );
   }
 
   /**
    * Fetches actual available dates for the selected doctor and presents them as option chips.
    * Called from both handleSelectDoctor and the recommend path in handleShowDoctors.
    */
-  private async handleAskDateForDoctor(inputs: any, aiHistory: any[], fromState: OpdState) {
+  private async handleAskDateForDoctor(
+    inputs: any,
+    aiHistory: any[],
+    fromState: OpdState,
+  ) {
     const doctorId = inputs.selectedDoctorId || inputs.doctorId;
     const allSlots = await this.doctorActions.getAvailableSlots(doctorId);
 
     // Filter by time preference if set
     const pref = (inputs.timePreference || '').toLowerCase();
-    const prefFiltered = pref ? allSlots.filter((s) => {
-      const hour = new Date(s.start_time).getHours();
-      if (pref.includes('morning'))   return hour >= 8  && hour < 12;
-      if (pref.includes('afternoon')) return hour >= 12 && hour < 16;
-      if (pref.includes('evening'))   return hour >= 16 && hour < 20;
-      return true;
-    }) : allSlots;
+    const prefFiltered = pref
+      ? allSlots.filter((s) => {
+          const hour = new Date(s.start_time).getHours();
+          if (pref.includes('morning')) return hour >= 8 && hour < 12;
+          if (pref.includes('afternoon')) return hour >= 12 && hour < 16;
+          if (pref.includes('evening')) return hour >= 16 && hour < 20;
+          return true;
+        })
+      : allSlots;
 
     const workingSlots = prefFiltered.length > 0 ? prefFiltered : allSlots;
 
@@ -827,7 +1425,12 @@ export class JanaOrchestratorService {
     }
 
     const dateOptions = Array.from(dateMap.entries()).map(([key, d]) => ({
-      label: d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' }),
+      label: d.toLocaleDateString('en-IN', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      }),
       value: key, // YYYY-MM-DD
     }));
 
@@ -843,12 +1446,19 @@ export class JanaOrchestratorService {
     };
   }
 
-  private async handleShowSlots(session: any, message: string, inputs: any, aiHistory: any[]) {
+  private async handleShowSlots(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
     // message = selected date (YYYY-MM-DD)
     inputs.preferredDate = message.trim();
 
     const doctorId = inputs.selectedDoctorId || inputs.doctorId;
-    const allSlots = inputs.allSlotsForDoctor || await this.doctorActions.getAvailableSlots(doctorId);
+    const allSlots =
+      inputs.allSlotsForDoctor ||
+      (await this.doctorActions.getAvailableSlots(doctorId));
 
     // Filter slots to the chosen date
     const selectedDate = inputs.preferredDate; // YYYY-MM-DD
@@ -859,22 +1469,31 @@ export class JanaOrchestratorService {
 
     // Additionally filter by time preference if set
     const pref = (inputs.timePreference || '').toLowerCase();
-    const filtered = pref ? slotsForDate.filter((s: any) => {
-      const hour = new Date(s.start_time).getHours();
-      if (pref.includes('morning'))   return hour >= 8  && hour < 12;
-      if (pref.includes('afternoon')) return hour >= 12 && hour < 16;
-      if (pref.includes('evening'))   return hour >= 16 && hour < 20;
-      return true;
-    }) : slotsForDate;
+    const filtered = pref
+      ? slotsForDate.filter((s: any) => {
+          const hour = new Date(s.start_time).getHours();
+          if (pref.includes('morning')) return hour >= 8 && hour < 12;
+          if (pref.includes('afternoon')) return hour >= 12 && hour < 16;
+          if (pref.includes('evening')) return hour >= 16 && hour < 20;
+          return true;
+        })
+      : slotsForDate;
 
-    const displaySlots = (filtered.length > 0 ? filtered : slotsForDate).slice(0, 8);
+    const displaySlots = (filtered.length > 0 ? filtered : slotsForDate).slice(
+      0,
+      8,
+    );
     inputs.availableSlots = displaySlots;
 
     const newState = transition(OpdState.ASK_DATE, OpdState.SHOW_SLOTS);
 
     if (displaySlots.length === 0) {
       // No slots on that date — re-show available dates
-      return this.handleAskDateForDoctor(inputs, aiHistory, OpdState.SELECT_DOCTOR);
+      return this.handleAskDateForDoctor(
+        inputs,
+        aiHistory,
+        OpdState.SELECT_DOCTOR,
+      );
     }
 
     return {
@@ -884,13 +1503,20 @@ export class JanaOrchestratorService {
       options: displaySlots.map((s: any) => {
         const d = new Date(s.start_time);
         return {
-          label: d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+          label: d.toLocaleTimeString('en-IN', {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
           value: s.availability_id,
         };
       }),
       actionName: 'SHOW_SLOTS',
       data: {
-        slots: displaySlots.map((s: any) => ({ id: s.availability_id, time: s.start_time, end: s.end_time })),
+        slots: displaySlots.map((s: any) => ({
+          id: s.availability_id,
+          time: s.start_time,
+          end: s.end_time,
+        })),
         doctorName: inputs.doctorName,
         date: selectedDate,
       },
@@ -899,18 +1525,32 @@ export class JanaOrchestratorService {
     };
   }
 
-  private async handleConfirmBooking(session: any, message: string, inputs: any, aiHistory: any[]) {
+  private async handleConfirmBooking(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
     // message = slotId (availability_id)
     const slotId = message.trim();
     inputs.selectedSlotId = slotId;
 
     // Find slot details from cached or DB
-    const slot = (inputs.availableSlots || []).find((s: any) => s.availability_id === slotId) ||
-      await this.prisma.doctor_availability.findUnique({ where: { availability_id: slotId } });
+    const slot =
+      (inputs.availableSlots || []).find(
+        (s: any) => s.availability_id === slotId,
+      ) ||
+      (await this.prisma.doctor_availability.findUnique({
+        where: { availability_id: slotId },
+      }));
 
     if (!slot) {
       // Re-show date picker for this doctor
-      return this.handleAskDateForDoctor(inputs, aiHistory, OpdState.SELECT_DOCTOR);
+      return this.handleAskDateForDoctor(
+        inputs,
+        aiHistory,
+        OpdState.SELECT_DOCTOR,
+      );
     }
 
     const date = new Date(slot.start_time);
@@ -928,32 +1568,55 @@ export class JanaOrchestratorService {
         { label: '🕑 Choose Different Time', value: 'change_time' },
       ],
       actionName: 'CONFIRM_BOOKING',
-      data: { slot: { id: slotId, time: slot.start_time }, doctorName: inputs.doctorName },
+      data: {
+        slot: { id: slotId, time: slot.start_time },
+        doctorName: inputs.doctorName,
+      },
       inputs,
       aiHistory,
     };
   }
 
-  private async handleBookingConfirmed(session: any, message: string, inputs: any, aiHistory: any[]) {
+  private async handleBookingConfirmed(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
     const lower = message.toLowerCase();
 
     // Change date → go back to date selection for this doctor
     if (lower.includes('change_date') || lower.includes('date')) {
-      return this.handleAskDateForDoctor(inputs, aiHistory, OpdState.SELECT_DOCTOR);
+      return this.handleAskDateForDoctor(
+        inputs,
+        aiHistory,
+        OpdState.SELECT_DOCTOR,
+      );
     }
 
     // Change time → re-show slots for the same date
     if (lower.includes('change_time') || lower.includes('time')) {
-      return this.handleShowSlots(session, inputs.preferredDate, inputs, aiHistory);
+      return this.handleShowSlots(
+        session,
+        inputs.preferredDate,
+        inputs,
+        aiHistory,
+      );
     }
 
     // Confirm
     await this.doctorActions.assignDoctor(inputs.caseId, inputs.doctorId);
 
     // Log Event
-    await this.addCaseEvent(inputs.caseId, 'APPOINTMENT_BOOKED', { doctor: inputs.doctorName, date: inputs.preferredDate });
+    await this.addCaseEvent(inputs.caseId, 'APPOINTMENT_BOOKED', {
+      doctor: inputs.doctorName,
+      date: inputs.preferredDate,
+    });
 
-    const newState = transition(OpdState.CONFIRM_BOOKING, OpdState.DOCTOR_ASSIGNED);
+    const newState = transition(
+      OpdState.CONFIRM_BOOKING,
+      OpdState.DOCTOR_ASSIGNED,
+    );
     return {
       newState,
       responseMessage: 'Doctor confirmed! Finalizing your appointment... ⏳',
@@ -967,7 +1630,12 @@ export class JanaOrchestratorService {
     };
   }
 
-  private async handleFinalizeAppointment(session: any, message: string, inputs: any, aiHistory: any[]) {
+  private async handleFinalizeAppointment(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
     const slotId = inputs.pendingSlotId;
 
     try {
@@ -980,17 +1648,52 @@ export class JanaOrchestratorService {
       inputs.appointmentId = apptResult.appointment.appointment_id;
       inputs.scheduledAt = apptResult.appointment.scheduled_at;
 
-      const newState = transition(OpdState.DOCTOR_ASSIGNED, OpdState.APPOINTMENT_BOOKED);
+      const newState = transition(
+        OpdState.DOCTOR_ASSIGNED,
+        OpdState.APPOINTMENT_BOOKED,
+      );
       const date = new Date(apptResult.appointment.scheduled_at);
       const msg = await this.aiService.formatResponse({
-        currentState: newState, stateLabel: STATE_LABELS[newState],
+        currentState: newState,
+        stateLabel: STATE_LABELS[newState],
         systemPrompt: `Appointment booked! Dr. ${inputs.doctorName} on ${date.toLocaleDateString('en-IN')} at ${date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}. Celebrate with the patient briefly and say we'll prepare their pre-consultation info.`,
-        data: { scheduledAt: date, doctorName: inputs.doctorName }, history: aiHistory,
+        data: { scheduledAt: date, doctorName: inputs.doctorName },
+        history: aiHistory,
         language: inputs.language,
       });
       aiHistory.push({ role: 'assistant', content: msg });
 
-      return { newState, responseMessage: msg, type: 'text' as const, options: [] as JanaOption[], actionName: 'APPOINTMENT_BOOKED', autoAdvance: true, data: { appointmentId: apptResult.appointment.appointment_id, scheduledAt: apptResult.appointment.scheduled_at, doctorName: inputs.doctorName }, inputs, aiHistory };
+      // 🔔 NOTIFICATION: appointment confirmed
+      await this.createNotification({
+        memberId: inputs.memberId,
+        caseId: inputs.caseId,
+        sessionId: session.session_id,
+        type: 'APPOINTMENT_REMINDER',
+        title: '✅ Appointment Confirmed',
+        message: `Your appointment with ${inputs.doctorName} is scheduled for ${date.toLocaleDateString('en-IN')} at ${date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}.`,
+        scheduledAt: date,
+      });
+
+      // Log milestone and create notification
+      await this.triggerMilestone(session, newState);
+
+      return {
+        newState,
+        responseMessage: msg,
+        type: 'options' as const,
+        options: [
+          { label: '🛋️ Proceed to Consultation Room', value: 'proceed_to_next_step' },
+        ],
+        actionName: 'APPOINTMENT_BOOKED',
+        autoAdvance: false, // PAUSE FOR PERMISSION
+        data: {
+          appointmentId: apptResult.appointment.appointment_id,
+          scheduledAt: apptResult.appointment.scheduled_at,
+          doctorName: inputs.doctorName,
+        },
+        inputs,
+        aiHistory,
+      };
     } catch (error) {
       return {
         newState: OpdState.SHOW_SLOTS,
@@ -998,7 +1701,10 @@ export class JanaOrchestratorService {
         type: 'slots' as const,
         options: (inputs.availableSlots || []).slice(0, 8).map((s: any) => {
           const d = new Date(s.start_time);
-          return { label: `${d.toLocaleDateString('en-IN')} at ${d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`, value: s.availability_id };
+          return {
+            label: `${d.toLocaleDateString('en-IN')} at ${d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`,
+            value: s.availability_id,
+          };
         }),
         actionName: 'BOOKING_FAILED',
         data: { error: (error as Error).message },
@@ -1012,52 +1718,104 @@ export class JanaOrchestratorService {
   // CONSULTATION HANDLERS
   // ═══════════════════════════════════════════════════════════════════════════
 
-  private async handlePreConsultation(session: any, message: string, inputs: any, aiHistory: any[]) {
-    const newState = transition(OpdState.APPOINTMENT_BOOKED, OpdState.PRE_CONSULTATION);
+  private async handlePreConsultation(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
+    const newState = transition(
+      OpdState.APPOINTMENT_BOOKED,
+      OpdState.PRE_CONSULTATION,
+    );
     await this.delay(1000);
     const date = new Date(inputs.scheduledAt);
     const msg = await this.aiService.formatResponse({
-      currentState: newState, stateLabel: STATE_LABELS[newState],
+      currentState: newState,
+      stateLabel: STATE_LABELS[newState],
       systemPrompt: `Appointment with Dr. ${inputs.doctorName} on ${date.toLocaleDateString('en-IN')} at ${date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}. Give pre-consultation tips (bring reports, arrive early). Ask if they're ready to begin.`,
-      data: { doctorName: inputs.doctorName, scheduledAt: date }, history: aiHistory,
+      data: { doctorName: inputs.doctorName, scheduledAt: date },
+      history: aiHistory,
       language: inputs.language,
     });
     aiHistory.push({ role: 'assistant', content: msg });
 
     return {
-      newState, responseMessage: msg, type: 'options' as const,
+      newState,
+      responseMessage: msg,
+      type: 'options' as const,
       options: [{ label: '▶️ Start Consultation', value: 'start' }],
       actionName: 'PRE_CONSULTATION_REMINDER',
-      data: { doctorName: inputs.doctorName, specialty: inputs.doctorSpecialty, scheduledAt: inputs.scheduledAt },
-      inputs, aiHistory,
+      data: {
+        doctorName: inputs.doctorName,
+        specialty: inputs.doctorSpecialty,
+        scheduledAt: inputs.scheduledAt,
+      },
+      inputs,
+      aiHistory,
     };
   }
 
-  private async handleStartConsultation(session: any, message: string, inputs: any, aiHistory: any[]) {
-    const newState = transition(OpdState.PRE_CONSULTATION, OpdState.CONSULTATION_IN_PROGRESS);
+  private async handleStartConsultation(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
+    const newState = transition(
+      OpdState.PRE_CONSULTATION,
+      OpdState.CONSULTATION_IN_PROGRESS,
+    );
     const msg = await this.aiService.formatResponse({
-      currentState: newState, stateLabel: STATE_LABELS[newState],
+      currentState: newState,
+      stateLabel: STATE_LABELS[newState],
       systemPrompt: `Consultation started with Dr. ${inputs.doctorName}. Doctor is reviewing symptoms. Ask patient to wait.`,
       history: aiHistory,
       language: inputs.language,
     });
     aiHistory.push({ role: 'assistant', content: msg });
-    return { newState, responseMessage: msg, type: 'text' as const, options: [] as JanaOption[], actionName: 'CONSULTATION_STARTED', autoAdvance: false, data: { doctorName: inputs.doctorName, caseId: inputs.caseId }, inputs, aiHistory };
+    return {
+      newState,
+      responseMessage: msg,
+      type: 'text' as const,
+      options: [] as JanaOption[],
+      actionName: 'CONSULTATION_STARTED',
+      autoAdvance: false,
+      data: { doctorName: inputs.doctorName, caseId: inputs.caseId },
+      inputs,
+      aiHistory,
+    };
   }
 
-  private async handleConsultation(session: any, message: string, inputs: any, aiHistory: any[]) {
+  private async handleConsultation(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
     // Check if the doctor has already submitted outcomes via the Doctor Panel.
     // If the session was advanced to OUTCOME_GENERATED by the doctor controller,
     // we would not reach here. But if the patient sends a message while still
     // CONSULTATION_IN_PROGRESS, we tell them to wait.
     const msg = await this.aiService.formatResponse({
-      currentState: OpdState.CONSULTATION_IN_PROGRESS, stateLabel: STATE_LABELS[OpdState.CONSULTATION_IN_PROGRESS],
+      currentState: OpdState.CONSULTATION_IN_PROGRESS,
+      stateLabel: STATE_LABELS[OpdState.CONSULTATION_IN_PROGRESS],
       systemPrompt: `The consultation with Dr. ${inputs.doctorName || 'your doctor'} is currently in progress. The doctor is reviewing your symptoms and medical history. Please be patient — you will receive a notification here as soon as the doctor completes their review. There is nothing you need to do right now.`,
       history: aiHistory,
       language: inputs.language,
     });
     aiHistory.push({ role: 'assistant', content: msg });
-    return { newState: OpdState.CONSULTATION_IN_PROGRESS, responseMessage: msg, type: 'text' as const, options: [] as JanaOption[], actionName: 'AWAITING_DOCTOR', autoAdvance: false, data: { doctorName: inputs.doctorName, caseId: inputs.caseId }, inputs, aiHistory };
+    return {
+      newState: OpdState.CONSULTATION_IN_PROGRESS,
+      responseMessage: msg,
+      type: 'text' as const,
+      options: [] as JanaOption[],
+      actionName: 'AWAITING_DOCTOR',
+      autoAdvance: false,
+      data: { doctorName: inputs.doctorName, caseId: inputs.caseId },
+      inputs,
+      aiHistory,
+    };
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1071,14 +1829,24 @@ export class JanaOrchestratorService {
   // we land here and present the doctor's findings conversationally.
   // ───────────────────────────────────────────────────────────────────────
 
-  private async handleOutcomeGeneration(session: any, message: string, inputs: any, aiHistory: any[]) {
+  private async handleOutcomeGeneration(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
     // This is the CONSULTATION_COMPLETED handler — but since the doctor panel
     // now handles outcomes, we should never auto-generate. Just pass through.
     // If somehow we reach here, just present the outcomes that the doctor already saved.
     return this.handleOutcomeGenerated(session, message, inputs, aiHistory);
   }
 
-  private async handleOutcomeGenerated(session: any, message: string, inputs: any, aiHistory: any[]) {
+  private async handleOutcomeGenerated(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
     // Doctor has submitted outcomes via the Doctor Panel.
     const diagnosis = inputs.diagnosis || 'General consultation';
     const consultationNote = inputs.consultationNote || '';
@@ -1088,21 +1856,37 @@ export class JanaOrchestratorService {
     let medDetails = 'None';
     if (outcomes.prescription || inputs.hasPrescription) {
       const meds = outcomes.prescription?.medications || [];
-      medDetails = meds.map((m: any) => `${m.name} (${m.frequency})${m.duration ? ` for ${m.duration}` : ''}${m.instructions ? ` - ${m.instructions}` : ''}`).join(', ');
+      medDetails = meds
+        .map(
+          (m: any) =>
+            `${m.name} (${m.frequency})${m.duration ? ` for ${m.duration}` : ''}${m.instructions ? ` - ${m.instructions}` : ''}`,
+        )
+        .join(', ');
       outcomeParts.push(`prescribed medicines: ${medDetails}`);
     }
     if (outcomes.testOrders?.length > 0 || inputs.hasTests) {
       const tests = outcomes.testOrders || [];
-      outcomeParts.push(`recommended diagnostic tests: ${tests.map((t: any) => t.name).join(', ')}`);
+      outcomeParts.push(
+        `recommended diagnostic tests: ${tests.map((t: any) => t.name).join(', ')}`,
+      );
     }
 
-    const summaryText = outcomeParts.length > 0 ? outcomeParts.join('. ') : 'completed the review';
+    const summaryText =
+      outcomeParts.length > 0
+        ? outcomeParts.join('. ')
+        : 'completed the review';
 
     // Check: do we need to ask about tests?
-    if ((outcomes.testOrders?.length > 0 || inputs.hasTests) && !inputs.testsHandled) {
-      const testNames = (outcomes.testOrders || []).map((t: any) => t.name).join(', ');
+    if (
+      (outcomes.testOrders?.length > 0 || inputs.hasTests) &&
+      !inputs.testsHandled
+    ) {
+      const testNames = (outcomes.testOrders || [])
+        .map((t: any) => t.name)
+        .join(', ');
       const msg = await this.aiService.formatResponse({
-        currentState: OpdState.OUTCOME_GENERATED, stateLabel: STATE_LABELS[OpdState.OUTCOME_GENERATED],
+        currentState: OpdState.OUTCOME_GENERATED,
+        stateLabel: STATE_LABELS[OpdState.OUTCOME_GENERATED],
         systemPrompt: `Dr. ${inputs.doctorName || 'Your doctor'} has completed the consultation. 
 Diagnosis: ${diagnosis}. ${consultationNote ? `Note: ${consultationNote}.` : ''}
 The doctor has ${summaryText}.
@@ -1110,40 +1894,56 @@ The doctor has ${summaryText}.
 CRITICAL: You must explicitly and comprehensively list EVERY detail from the doctor. 
 Specifically, list all medicines, their frequencies, and any special instructions: ${medDetails}.
 Then, ask if the patient wants Janmitra (Jana AI) to schedule these diagnostic tests: ${testNames}.`,
-        history: aiHistory, language: inputs.language,
+        history: aiHistory,
+        language: inputs.language,
       });
       aiHistory.push({ role: 'assistant', content: msg });
 
       return {
-        newState: OpdState.SCHEDULE_TESTS, responseMessage: msg, type: 'options' as const,
+        newState: OpdState.SCHEDULE_TESTS,
+        responseMessage: msg,
+        type: 'options' as const,
         options: [
           { label: '✅ Yes, schedule my tests', value: 'yes_schedule' },
-          { label: '❌ No, I\'ll handle it myself', value: 'no_skip_tests' },
+          { label: "❌ No, I'll handle it myself", value: 'no_skip_tests' },
         ],
-        actionName: 'ASK_SCHEDULE_TESTS', data: { diagnosis, testNames }, inputs, aiHistory,
+        actionName: 'ASK_SCHEDULE_TESTS',
+        data: { diagnosis, testNames },
+        inputs,
+        aiHistory,
       };
     }
 
     // No tests — check if prescription exists, ask about delivery
-    if ((outcomes.prescription || inputs.hasPrescription) && !inputs.deliveryHandled) {
+    if (
+      (outcomes.prescription || inputs.hasPrescription) &&
+      !inputs.deliveryHandled
+    ) {
       const msg = await this.aiService.formatResponse({
-        currentState: OpdState.OUTCOME_GENERATED, stateLabel: STATE_LABELS[OpdState.OUTCOME_GENERATED],
+        currentState: OpdState.OUTCOME_GENERATED,
+        stateLabel: STATE_LABELS[OpdState.OUTCOME_GENERATED],
         systemPrompt: `Dr. ${inputs.doctorName || 'Your doctor'} has completed the consultation with the following summary: ${summaryText}.
 Diagnosis: ${diagnosis}. ${consultationNote ? `Note: ${consultationNote}.` : ''}
 
 CRITICAL: You must read out the full list of medications, frequencies, and instructions provided: ${medDetails}.
 Then, ask the patient if they would like Janmitra to deliver these medicines to their door.`,
-        history: aiHistory, language: inputs.language,
+        history: aiHistory,
+        language: inputs.language,
       });
       aiHistory.push({ role: 'assistant', content: msg });
 
       return {
-        newState: OpdState.ASK_DELIVERY_CONSENT, responseMessage: msg, type: 'options' as const,
+        newState: OpdState.ASK_DELIVERY_CONSENT,
+        responseMessage: msg,
+        type: 'options' as const,
         options: [
           { label: '🚚 Deliver to my door', value: 'yes_deliver' },
           { label: '🚶 I will pick it up', value: 'no_self' },
         ],
-        actionName: 'ASK_DELIVERY_CONSENT', data: { diagnosis }, inputs, aiHistory,
+        actionName: 'ASK_DELIVERY_CONSENT',
+        data: { diagnosis },
+        inputs,
+        aiHistory,
       };
     }
 
@@ -1151,93 +1951,188 @@ Then, ask the patient if they would like Janmitra to deliver these medicines to 
     return this.skipToFollowup(session, message, inputs, aiHistory);
   }
 
-  private async handleScheduleTests(session: any, message: string, inputs: any, aiHistory: any[]) {
+  private async handleScheduleTests(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
     const choice = message.toLowerCase();
 
     // Context for AI
-    const testNames = (inputs.outcomes?.testOrders || []).map((t: any) => t.name).join(', ');
+    const testNames = (inputs.outcomes?.testOrders || [])
+      .map((t: any) => t.name)
+      .join(', ');
     const meds = inputs.outcomes?.prescription?.medications || [];
-    const medDetails = meds.map((m: any) => `${m.name} (${m.frequency})${m.duration ? ` for ${m.duration}` : ''}`).join(', ');
+    const medDetails = meds
+      .map(
+        (m: any) =>
+          `${m.name} (${m.frequency})${m.duration ? ` for ${m.duration}` : ''}`,
+      )
+      .join(', ');
 
     // 1. Initial Choice: YES
-    if (choice.includes('yes_schedule') || (choice.includes('yes') && !choice.includes('morning') && !choice.includes('afternoon'))) {
+    if (
+      choice.includes('yes_schedule') ||
+      (choice.includes('yes') &&
+        !choice.includes('morning') &&
+        !choice.includes('afternoon'))
+    ) {
       const msg = await this.aiService.formatResponse({
-        currentState: OpdState.SCHEDULE_TESTS, stateLabel: STATE_LABELS[OpdState.SCHEDULE_TESTS],
+        currentState: OpdState.SCHEDULE_TESTS,
+        stateLabel: STATE_LABELS[OpdState.SCHEDULE_TESTS],
         systemPrompt: `The user wants to schedule their diagnostic tests (${testNames}). Ask for their preference: Tomorrow Morning (9 AM) or Tomorrow Afternoon (2 PM).`,
-        history: aiHistory, language: inputs.language,
+        history: aiHistory,
+        language: inputs.language,
       });
       aiHistory.push({ role: 'assistant', content: msg });
       return {
-        newState: OpdState.SCHEDULE_TESTS, responseMessage: msg, type: 'options' as const,
-        options: [{ label: '🌅 Tomorrow Morning (9 AM)', value: 'time_morning' }, { label: '☀️ Tomorrow Afternoon (2 PM)', value: 'time_afternoon' }],
-        actionName: 'ASK_TEST_TIME', data: {}, inputs, aiHistory,
+        newState: OpdState.SCHEDULE_TESTS,
+        responseMessage: msg,
+        type: 'options' as const,
+        options: [
+          { label: '🌅 Tomorrow Morning (9 AM)', value: 'time_morning' },
+          { label: '☀️ Tomorrow Afternoon (2 PM)', value: 'time_afternoon' },
+        ],
+        actionName: 'ASK_TEST_TIME',
+        data: {},
+        inputs,
+        aiHistory,
       };
     }
 
     // 2. Time Selection
-    if (choice.includes('time_morning') || choice.includes('time_afternoon') || choice.includes('9 am') || choice.includes('2 pm')) {
-      const testOrders = await this.prisma.test_orders.findMany({ where: { case_id: inputs.caseId, status: 'ORDERED' } });
-      const scheduledDate = new Date(); scheduledDate.setDate(scheduledDate.getDate() + 1); 
+    if (
+      choice.includes('time_morning') ||
+      choice.includes('time_afternoon') ||
+      choice.includes('9 am') ||
+      choice.includes('2 pm')
+    ) {
+      const testOrders = await this.prisma.test_orders.findMany({
+        where: { case_id: inputs.caseId, status: 'ORDERED' },
+      });
+      const scheduledDate = new Date();
+      scheduledDate.setDate(scheduledDate.getDate() + 1);
       const isMorning = choice.includes('morning') || choice.includes('9 am');
       scheduledDate.setHours(isMorning ? 9 : 14, 0, 0, 0);
 
       for (const order of testOrders) {
-        await this.triggers.diagnosticBookingTrigger({ testOrderId: order.test_order_id, scheduledAt: scheduledDate });
+        await this.triggers.diagnosticBookingTrigger({
+          testOrderId: order.test_order_id,
+          scheduledAt: scheduledDate,
+        });
       }
 
       inputs.testsHandled = true;
       const msg = await this.aiService.formatResponse({
-        currentState: OpdState.SCHEDULE_TESTS, stateLabel: STATE_LABELS[OpdState.SCHEDULE_TESTS],
+        currentState: OpdState.SCHEDULE_TESTS,
+        stateLabel: STATE_LABELS[OpdState.SCHEDULE_TESTS],
         systemPrompt: `Scheduled ${testNames} for ${scheduledDate.toLocaleDateString('en-IN')} at ${isMorning ? '9 AM' : '2 PM'}. Tell the patient and confirm. Also remind them about the prescribed medicines: ${medDetails}.`,
-        history: aiHistory, language: inputs.language,
+        history: aiHistory,
+        language: inputs.language,
       });
       aiHistory.push({ role: 'assistant', content: msg });
 
-      if ((inputs.outcomes?.prescription || inputs.hasPrescription) && !inputs.deliveryHandled) {
+      if (
+        (inputs.outcomes?.prescription || inputs.hasPrescription) &&
+        !inputs.deliveryHandled
+      ) {
         return {
-          newState: OpdState.ASK_DELIVERY_CONSENT, responseMessage: msg, type: 'options' as const,
-          options: [{ label: '🚚 Deliver to my door', value: 'yes_deliver' }, { label: '🚶 I will get it myself', value: 'no_self' }],
-          actionName: 'TESTS_SCHEDULED_ASK_DELIVERY', data: { tests: testOrders }, inputs, aiHistory,
+          newState: OpdState.ASK_DELIVERY_CONSENT,
+          responseMessage: msg,
+          type: 'options' as const,
+          options: [
+            { label: '🚚 Deliver to my door', value: 'yes_deliver' },
+            { label: '🚶 I will get it myself', value: 'no_self' },
+          ],
+          actionName: 'TESTS_SCHEDULED_ASK_DELIVERY',
+          data: { tests: testOrders },
+          inputs,
+          aiHistory,
         };
       }
-      return { newState: OpdState.FOLLOWUP_PENDING, responseMessage: msg, type: 'text' as const, options: [], actionName: 'TESTS_SCHEDULED', autoAdvance: true, data: {}, inputs, aiHistory };
+      return {
+        newState: OpdState.FOLLOWUP_PENDING,
+        responseMessage: msg,
+        type: 'text' as const,
+        options: [],
+        actionName: 'TESTS_SCHEDULED',
+        autoAdvance: true,
+        data: {},
+        inputs,
+        aiHistory,
+      };
     }
 
     // 3. Reject Scheduling
     if (choice.includes('no') || choice.includes('skip')) {
       inputs.testsHandled = true;
-      if ((inputs.outcomes?.prescription || inputs.hasPrescription) && !inputs.deliveryHandled) {
-        return this.handleAskDeliveryConsent(session, message, inputs, aiHistory, OpdState.ASK_DELIVERY_CONSENT);
+      if (
+        (inputs.outcomes?.prescription || inputs.hasPrescription) &&
+        !inputs.deliveryHandled
+      ) {
+        return this.handleAskDeliveryConsent(
+          session,
+          message,
+          inputs,
+          aiHistory,
+          OpdState.ASK_DELIVERY_CONSENT,
+        );
       }
       return this.skipToFollowup(session, message, inputs, aiHistory);
     }
 
     // 4. Natural Language / Default (Handles user questions like "what medicine")
     const msg = await this.aiService.formatResponse({
-      currentState: OpdState.SCHEDULE_TESTS, stateLabel: STATE_LABELS[OpdState.SCHEDULE_TESTS],
+      currentState: OpdState.SCHEDULE_TESTS,
+      stateLabel: STATE_LABELS[OpdState.SCHEDULE_TESTS],
       systemPrompt: `The user has not yet made a choice about scheduling the diagnostic tests (${testNames}). 
 If the user asks a question, answer it. Prescribed medicines are: ${medDetails}.
 Always bring the conversation back to whether they want you to schedule the tests for them.`,
-      history: aiHistory, language: inputs.language,
+      history: aiHistory,
+      language: inputs.language,
     });
     aiHistory.push({ role: 'assistant', content: msg });
     return {
-      newState: OpdState.SCHEDULE_TESTS, responseMessage: msg, type: 'options' as const,
-      options: [{ label: '✅ Yes, schedule tests', value: 'yes_schedule' }, { label: '❌ No, I\'ll handle it', value: 'no_skip_tests' }],
-      actionName: 'ENHANCED_RE_PROMPT_TESTS', data: {}, inputs, aiHistory,
+      newState: OpdState.SCHEDULE_TESTS,
+      responseMessage: msg,
+      type: 'options' as const,
+      options: [
+        { label: '✅ Yes, schedule tests', value: 'yes_schedule' },
+        { label: "❌ No, I'll handle it", value: 'no_skip_tests' },
+      ],
+      actionName: 'ENHANCED_RE_PROMPT_TESTS',
+      data: {},
+      inputs,
+      aiHistory,
     };
   }
 
-  private async handleAskDeliveryConsent(session: any, message: string, inputs: any, aiHistory: any[], directNewState?: OpdState) {
+  private async handleAskDeliveryConsent(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+    directNewState?: OpdState,
+  ) {
     // If message is one of the options, process it
     const choice = message.toLowerCase();
-    
+
     if (choice.includes('yes_deliver')) {
       inputs.deliveryHandled = true;
-      const newState = transition(OpdState.ASK_DELIVERY_CONSENT, OpdState.ASK_DELIVERY_ADDRESS);
-      return { 
-        newState, responseMessage: "Great! Please provide your full delivery address.", type: 'input' as const, options: [], 
-        actionName: 'AWAITING_DELIVERY_ADDRESS', data: {}, inputs, aiHistory 
+      const newState = transition(
+        OpdState.ASK_DELIVERY_CONSENT,
+        OpdState.ASK_DELIVERY_ADDRESS,
+      );
+      return {
+        newState,
+        responseMessage: 'Great! Please provide your full delivery address.',
+        type: 'input' as const,
+        options: [],
+        actionName: 'AWAITING_DELIVERY_ADDRESS',
+        data: {},
+        inputs,
+        aiHistory,
       };
     } else if (choice.includes('no_self')) {
       inputs.deliveryHandled = true;
@@ -1247,62 +2142,108 @@ Always bring the conversation back to whether they want you to schedule the test
     // Default entry or Answer questioning
     const newState = directNewState || OpdState.ASK_DELIVERY_CONSENT;
     const meds = inputs.outcomes?.prescription?.medications || [];
-    const medDetails = meds.map((m: any) => `${m.name} (${m.frequency})`).join(', ');
+    const medDetails = meds
+      .map((m: any) => `${m.name} (${m.frequency})`)
+      .join(', ');
 
-    const msg = await this.aiService.formatResponse({ 
-      currentState: newState, stateLabel: STATE_LABELS[newState], 
+    const msg = await this.aiService.formatResponse({
+      currentState: newState,
+      stateLabel: STATE_LABELS[newState],
       systemPrompt: `The doctor has prescribed some medicines: ${medDetails}. 
 Tell the patient explicitly what was prescribed.
 If they ask a question, answer it. 
-Then, ask if they would like Janmitra to deliver the medicines securely to their door, or if they will pick them up themselves.`, 
-      history: aiHistory, language: inputs.language 
+Then, ask if they would like Janmitra to deliver the medicines securely to their door, or if they will pick them up themselves.`,
+      history: aiHistory,
+      language: inputs.language,
     });
     aiHistory.push({ role: 'assistant', content: msg });
-    
-    return { 
-      newState, responseMessage: msg, type: 'options' as const, 
-      options: [{ label: '🚚 Deliver to my door', value: 'yes_deliver' }, { label: '🚶 I will get it myself', value: 'no_self' }], 
-      actionName: 'ASK_DELIVERY_CONSENT', data: {}, inputs, aiHistory 
+
+    return {
+      newState,
+      responseMessage: msg,
+      type: 'options' as const,
+      options: [
+        { label: '🚚 Deliver to my door', value: 'yes_deliver' },
+        { label: '🚶 I will get it myself', value: 'no_self' },
+      ],
+      actionName: 'ASK_DELIVERY_CONSENT',
+      data: {},
+      inputs,
+      aiHistory,
     };
   }
 
-  private async handleAskDeliveryAddress(session: any, message: string, inputs: any, aiHistory: any[]) {
+  private async handleAskDeliveryAddress(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
     // User has entered their address
     const address = message.trim();
     if (address.length < 5) {
-      return { 
-        newState: OpdState.ASK_DELIVERY_ADDRESS, 
-        responseMessage: "That seems like a short address. Could you provide your full address for accurate delivery?", 
-        type: 'input' as const, options: [], actionName: 'INVALID_ADDRESS', data: {}, inputs, aiHistory 
+      return {
+        newState: OpdState.ASK_DELIVERY_ADDRESS,
+        responseMessage:
+          'That seems like a short address. Could you provide your full address for accurate delivery?',
+        type: 'input' as const,
+        options: [],
+        actionName: 'INVALID_ADDRESS',
+        data: {},
+        inputs,
+        aiHistory,
       };
     }
 
     inputs.deliveryAddress = address;
-    const prescription = await this.prisma.prescriptions.findFirst({ 
+    const prescription = await this.prisma.prescriptions.findFirst({
       where: { case_id: inputs.caseId, status: 'ACTIVE' },
-      orderBy: { created_at: 'desc' }
+      orderBy: { created_at: 'desc' },
     });
 
     if (prescription) {
-      await this.triggers.medicineDeliveryTrigger({ 
-        prescriptionId: prescription.prescription_id, 
-        address: address 
+      await this.triggers.medicineDeliveryTrigger({
+        prescriptionId: prescription.prescription_id,
+        address: address,
       });
 
       // Log event
-      await this.addCaseEvent(inputs.caseId, 'MEDICINE_DELIVERY_BOOKED', { address, prescriptionId: prescription.prescription_id });
+      await this.addCaseEvent(inputs.caseId, 'MEDICINE_DELIVERY_BOOKED', {
+        address,
+        prescriptionId: prescription.prescription_id,
+      });
+
+      // 🔔 NOTIFICATION: delivery booked
+      await this.createNotification({
+        memberId: inputs.memberId,
+        caseId: inputs.caseId,
+        sessionId: session.session_id,
+        type: 'DELIVERY_UPDATE',
+        title: '🚚 Medicine Delivery Confirmed',
+        message: `Your medicines are being dispatched to ${address}. Expected arrival: within 2 hours.`,
+      });
 
       const msg = await this.aiService.formatResponse({
-        currentState: OpdState.ASK_DELIVERY_ADDRESS, stateLabel: STATE_LABELS[OpdState.ASK_DELIVERY_ADDRESS],
+        currentState: OpdState.ASK_DELIVERY_ADDRESS,
+        stateLabel: STATE_LABELS[OpdState.ASK_DELIVERY_ADDRESS],
         systemPrompt: `Medicine delivery has been booked for ${address}. It will arrive within 2 hours. Inform the patient and then proceed to close the case.`,
-        data: { address }, history: aiHistory, language: inputs.language
+        data: { address },
+        history: aiHistory,
+        language: inputs.language,
       });
       aiHistory.push({ role: 'assistant', content: msg });
 
       // Auto-advance to closure/followup
-      return { 
-        newState: OpdState.FOLLOWUP_PENDING, responseMessage: msg, type: 'text' as const, 
-        options: [], actionName: 'DELIVERY_BOOKED', autoAdvance: true, data: { address }, inputs, aiHistory 
+      return {
+        newState: OpdState.FOLLOWUP_PENDING,
+        responseMessage: msg,
+        type: 'text' as const,
+        options: [],
+        actionName: 'DELIVERY_BOOKED',
+        autoAdvance: true,
+        data: { address },
+        inputs,
+        aiHistory,
       };
     }
 
@@ -1310,44 +2251,75 @@ Then, ask if they would like Janmitra to deliver the medicines securely to their
     return this.skipToFollowup(session, message, inputs, aiHistory);
   }
 
-  private async handleTestCompleted(session: any, message: string, inputs: any, aiHistory: any[]) {
+  private async handleTestCompleted(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
     const choice = message.toLowerCase();
     const caseId = inputs.caseId;
 
     // Fetch the latest completed test results
     const completedTests = await this.prisma.test_orders.findMany({
       where: { case_id: caseId, status: 'COMPLETED' },
-      orderBy: { completed_at: 'desc' }
+      orderBy: { completed_at: 'desc' },
     });
 
     if (choice.includes('review') || choice.includes('report')) {
-      const reportSummary = completedTests.map(t => {
-        const res = t.result as any;
-        return `${t.test_name}: ${res?.report || 'N/A'}`;
-      }).join('\n');
-      
+      const reportSummary = completedTests
+        .map((t) => {
+          const res = t.result as any;
+          return `${t.test_name}: ${res?.report || 'N/A'}`;
+        })
+        .join('\n');
+
       const msg = await this.aiService.formatResponse({
-        currentState: OpdState.TEST_COMPLETED, stateLabel: STATE_LABELS[OpdState.TEST_COMPLETED],
+        currentState: OpdState.TEST_COMPLETED,
+        stateLabel: STATE_LABELS[OpdState.TEST_COMPLETED],
         systemPrompt: `The patient wants to review their lab reports. 
         Reports: ${reportSummary}.
         Explain the results in simple, reassuring terms. If anything is abnormal, suggest a follow-up consultation with their doctor.`,
-        data: { reports: completedTests }, history: aiHistory, language: inputs.language
+        data: { reports: completedTests },
+        history: aiHistory,
+        language: inputs.language,
       });
       aiHistory.push({ role: 'assistant', content: msg });
 
       return {
-        newState: OpdState.TEST_COMPLETED, responseMessage: msg, type: 'options' as const,
-        options: [{ label: '📅 Schedule Follow-up with Doctor', value: 'schedule_followup' }, { label: '✅ I\'m done, thank you', value: 'close_case' }],
-        actionName: 'REPORT_REVIEWED', data: { reports: completedTests }, inputs, aiHistory
+        newState: OpdState.TEST_COMPLETED,
+        responseMessage: msg,
+        type: 'options' as const,
+        options: [
+          {
+            label: '📅 Schedule Follow-up with Doctor',
+            value: 'schedule_followup',
+          },
+          { label: "✅ I'm done, thank you", value: 'close_case' },
+        ],
+        actionName: 'REPORT_REVIEWED',
+        data: { reports: completedTests },
+        inputs,
+        aiHistory,
       };
     }
 
     if (choice.includes('followup') || choice.includes('schedule_followup')) {
       // Transition back to appointment init for a follow-up
-      const newState = transition(OpdState.TEST_COMPLETED, OpdState.APPOINTMENT_INIT);
+      const newState = transition(
+        OpdState.TEST_COMPLETED,
+        OpdState.APPOINTMENT_INIT,
+      );
       return {
-        newState, responseMessage: "I'll help you book a follow-up appointment to discuss these results. Let's find a suitable time.",
-        type: 'text' as const, options: [], actionName: 'START_FOLLOWUP_BOOKING', data: {}, inputs, aiHistory
+        newState,
+        responseMessage:
+          "I'll help you book a follow-up appointment to discuss these results. Let's find a suitable time.",
+        type: 'text' as const,
+        options: [],
+        actionName: 'START_FOLLOWUP_BOOKING',
+        data: {},
+        inputs,
+        aiHistory,
       };
     }
 
@@ -1356,96 +2328,201 @@ Then, ask if they would like Janmitra to deliver the medicines securely to their
     }
 
     // Default entrance: Inform about results
-    const testNames = completedTests.map(t => t.test_name).join(', ');
+    const testNames = completedTests.map((t) => t.test_name).join(', ');
     const msg = await this.aiService.formatResponse({
-      currentState: OpdState.TEST_COMPLETED, stateLabel: STATE_LABELS[OpdState.TEST_COMPLETED],
+      currentState: OpdState.TEST_COMPLETED,
+      stateLabel: STATE_LABELS[OpdState.TEST_COMPLETED],
       systemPrompt: `The laboratory has uploaded results for: ${testNames}. 
       Proactively inform the patient that their reports are ready and ask if they would like to review them now or schedule a follow-up with the doctor.`,
-      history: aiHistory, language: inputs.language
+      history: aiHistory,
+      language: inputs.language,
     });
     aiHistory.push({ role: 'assistant', content: msg });
 
     return {
-      newState: OpdState.TEST_COMPLETED, responseMessage: msg, type: 'options' as const,
+      newState: OpdState.TEST_COMPLETED,
+      responseMessage: msg,
+      type: 'options' as const,
       options: [
         { label: '📊 Review My Reports', value: 'review_reports' },
-        { label: '📅 Schedule Follow-up', value: 'schedule_followup' }
+        { label: '📅 Schedule Follow-up', value: 'schedule_followup' },
       ],
-      actionName: 'RESULTS_READY_PROMPT', data: { testNames }, inputs, aiHistory
+      actionName: 'RESULTS_READY_PROMPT',
+      data: { testNames },
+      inputs,
+      aiHistory,
     };
   }
 
-  private async skipToFollowup(session: any, message: string, inputs: any, aiHistory: any[]) {
-     const newState = OpdState.FOLLOWUP_PENDING;
-     // Hack transitioning internally
-     this.prisma.opd_sessions.update({ where: { session_id: session.session_id }, data: { opd_state: newState } }).catch(e=>null);
-     
-     const msg = await this.aiService.formatResponse({ 
-       currentState: newState, stateLabel: STATE_LABELS[newState], 
-       systemPrompt: `The case logistics are finalized. Ask the patient if they want to schedule a courtesy follow-up next week or close the case now.`, 
-       history: aiHistory, language: inputs.language 
-     });
-     aiHistory.push({ role: 'assistant', content: msg });
-     return { 
-       newState, responseMessage: msg, type: 'options' as const, 
-       options: [{ label: '📅 Schedule Follow-up', value: 'followup' }, { label: '✅ Close Case', value: 'close' }], 
-       actionName: 'PROCEED_TO_CLOSE', data: {}, inputs, aiHistory 
-     };
+  private async skipToFollowup(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
+    const newState = OpdState.FOLLOWUP_PENDING;
+    // Hack transitioning internally
+    this.prisma.opd_sessions
+      .update({
+        where: { session_id: session.session_id },
+        data: { opd_state: newState },
+      })
+      .catch((e) => null);
+
+    const msg = await this.aiService.formatResponse({
+      currentState: newState,
+      stateLabel: STATE_LABELS[newState],
+      systemPrompt: `The case logistics are finalized. Ask the patient if they want to schedule a courtesy follow-up next week or close the case now.`,
+      history: aiHistory,
+      language: inputs.language,
+    });
+    aiHistory.push({ role: 'assistant', content: msg });
+    return {
+      newState,
+      responseMessage: msg,
+      type: 'options' as const,
+      options: [
+        { label: '📅 Schedule Follow-up', value: 'followup' },
+        { label: '✅ Close Case', value: 'close' },
+      ],
+      actionName: 'PROCEED_TO_CLOSE',
+      data: {},
+      inputs,
+      aiHistory,
+    };
   }
 
-  private async handleFollowup(session: any, message: string, inputs: any, aiHistory: any[]) {
+  private async handleFollowup(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
     // If they were auto-advanced into followup reading from handleAskDeliveryAddress:
     if (message === '__auto_advance__') {
-       return this.skipToFollowup(session, message, inputs, aiHistory);
+      return this.skipToFollowup(session, message, inputs, aiHistory);
     }
 
-    if (message.toLowerCase().includes('follow') || message.toLowerCase().includes('schedule')) {
-      // Initiate follow-up booking
-      inputs.consultationType = 'Teleconsultation';
+    if (
+      message.toLowerCase().includes('follow') ||
+      message.toLowerCase().includes('schedule')
+    ) {
+      // RULE: Follow-up MUST use the SAME case_id. Never create a new case.
+      // Just extend the journey by resetting the appointment booking phase.
+      inputs.consultationType = 'TELECONSULTATION';
+      inputs.isFollowUp = true;
+      // Keep caseId untouched — only create a new OPD visit record.
       const newState = OpdState.APPOINTMENT_INIT;
-      
-      const msg = await this.aiService.formatResponse({ 
-        currentState: newState, 
-        stateLabel: STATE_LABELS[newState], 
-        systemPrompt: `The user wants a follow-up. I've already set it as a Teleconsultation. Ask them about their time preference for this follow-up call.`, 
-        history: aiHistory, 
-        language: inputs.language 
-      });
-      
-      aiHistory.push({ role: 'assistant', content: msg });
-      
-      await this.prisma.opd_sessions.update({
-        where: { session_id: session.session_id },
-        data: { opd_state: newState, collected_inputs: inputs as any, ai_history: aiHistory as any }
+
+      // Track the follow-up visit
+      if (inputs.caseId && !inputs.caseId.startsWith('SESSION_')) {
+        await this.prisma.opd_visits
+          .create({
+            data: {
+              case_id: inputs.caseId,
+              visit_type: 'FOLLOWUP',
+              status: 'SCHEDULED',
+              notes: 'Follow-up visit initiated by patient via Jana AI.',
+            } as any,
+          })
+          .catch(() => null);
+
+        // 🔔 NOTIFICATION: follow-up reminder
+        await this.createNotification({
+          memberId: inputs.memberId,
+          caseId: inputs.caseId,
+          sessionId: session.session_id,
+          type: 'FOLLOWUP_REMINDER',
+          title: '📅 Follow-up Booking Started',
+          message: `Your follow-up consultation is being scheduled. Same case ID will be used to ensure continuity.`,
+        });
+      }
+
+      const msg = await this.aiService.formatResponse({
+        currentState: newState,
+        stateLabel: STATE_LABELS[newState],
+        systemPrompt: `The user wants a follow-up. This is continuation of the SAME case (${inputs.caseId?.slice(-8) || 'current'}). Set it as a Teleconsultation. Ask about their time preference for the follow-up call.`,
+        history: aiHistory,
+        language: inputs.language,
       });
 
-      return { 
-        newState, 
-        responseMessage: msg, 
-        type: 'text' as const, 
-        autoAdvance: true, // Trigger next state logic immediately
-        actionName: 'START_FOLLOWUP_BOOKING', 
-        data: {}, 
-        inputs, 
-        aiHistory 
+      aiHistory.push({ role: 'assistant', content: msg });
+
+      await this.prisma.opd_sessions.update({
+        where: { session_id: session.session_id },
+        data: {
+          opd_state: newState,
+          collected_inputs: inputs,
+          ai_history: aiHistory as any,
+        },
+      });
+
+      return {
+        newState,
+        responseMessage: msg,
+        type: 'text' as const,
+        autoAdvance: true,
+        actionName: 'START_FOLLOWUP_BOOKING',
+        data: { caseId: inputs.caseId, visitType: 'FOLLOWUP' },
+        inputs,
+        aiHistory,
       };
     }
 
     // Default: Close Case
-    await this.caseActions.closeCase(inputs.caseId, 'Case closed by user request.');
+    await this.caseActions.closeCase(
+      inputs.caseId,
+      'Case closed by user request.',
+    );
     const newState = OpdState.CLOSED;
 
     // Log Event
-    await this.addCaseEvent(inputs.caseId, 'CASE_CLOSED', { summary: 'Patient healthcare journey completed.' });
+    await this.addCaseEvent(inputs.caseId, 'CASE_CLOSED', {
+      summary: 'Patient healthcare journey completed.',
+    });
 
-    const msg = await this.aiService.formatResponse({ currentState: newState, stateLabel: STATE_LABELS[newState], systemPrompt: 'Case closed. Thank patient warmly, wish speedy recovery, remind to take meds. Say they can start a new session anytime.', history: aiHistory, language: inputs.language });
-    await this.prisma.opd_sessions.update({ where: { session_id: session.session_id }, data: { is_active: false } });
-    return { newState, responseMessage: msg, type: 'options' as const, options: [{ label: '🔄 Start New Session', value: 'new_session' }], actionName: 'CASE_CLOSED', data: { caseId: inputs.caseId }, inputs, aiHistory };
+    const msg = await this.aiService.formatResponse({
+      currentState: newState,
+      stateLabel: STATE_LABELS[newState],
+      systemPrompt:
+        'Case closed. Thank patient warmly, wish speedy recovery, remind to take meds. Say they can start a new session anytime.',
+      history: aiHistory,
+      language: inputs.language,
+    });
+    await this.prisma.opd_sessions.update({
+      where: { session_id: session.session_id },
+      data: { is_active: false },
+    });
+    return {
+      newState,
+      responseMessage: msg,
+      type: 'options' as const,
+      options: [{ label: '🔄 Start New Session', value: 'new_session' }],
+      actionName: 'CASE_CLOSED',
+      data: { caseId: inputs.caseId },
+      inputs,
+      aiHistory,
+    };
   }
 
-  private async handleClosed(session: any, message: string, inputs: any, aiHistory: any[]) {
+  private async handleClosed(
+    session: any,
+    message: string,
+    inputs: any,
+    aiHistory: any[],
+  ) {
     const newSession = await this.createSession(randomUUID());
-    return { newState: OpdState.NEW, responseMessage: 'Welcome back to Jana AI! 🏥 Please enter your Member ID or create a new account to begin.', type: 'options' as const, options: [{ label: '🆕 Create New Member', value: 'CREATE_NEW_MEMBER' }], actionName: 'NEW_SESSION', data: { newSessionId: newSession.session_id }, inputs: {}, aiHistory: [] };
+    return {
+      newState: OpdState.NEW,
+      responseMessage:
+        'Welcome back to Jana AI! 🏥 Please enter your Member ID or create a new account to begin.',
+      type: 'options' as const,
+      options: [{ label: '🆕 Create New Member', value: 'CREATE_NEW_MEMBER' }],
+      actionName: 'NEW_SESSION',
+      data: { newSessionId: newSession.session_id },
+      inputs: {},
+      aiHistory: [],
+    };
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1453,25 +2530,107 @@ Then, ask if they would like Janmitra to deliver the medicines securely to their
   // ═══════════════════════════════════════════════════════════════════════════
 
   private async loadSession(sessionId: string) {
-    return this.prisma.opd_sessions.findFirst({ where: { session_id: sessionId, is_active: true } });
+    return this.prisma.opd_sessions.findFirst({
+      where: { session_id: sessionId, is_active: true },
+    });
   }
 
   private async createSession(sessionId: string) {
-    const existing = await this.prisma.opd_sessions.findFirst({ where: { session_id: sessionId } });
+    const existing = await this.prisma.opd_sessions.findFirst({
+      where: { session_id: sessionId },
+    });
     if (existing) {
-      return this.prisma.opd_sessions.update({ where: { session_id: existing.session_id }, data: { is_active: true, opd_state: 'NEW', collected_inputs: {}, trigger_history: [], ai_history: [] } });
+      return this.prisma.opd_sessions.update({
+        where: { session_id: existing.session_id },
+        data: {
+          is_active: true,
+          opd_state: 'NEW',
+          collected_inputs: {},
+          trigger_history: [],
+          ai_history: [],
+        },
+      });
     }
-    return this.prisma.opd_sessions.create({ data: { session_id: sessionId, opd_state: 'NEW', collected_inputs: {}, trigger_history: [], ai_history: [] } });
+    return this.prisma.opd_sessions.create({
+      data: {
+        session_id: sessionId,
+        opd_state: 'NEW',
+        collected_inputs: {},
+        trigger_history: [],
+        ai_history: [],
+      },
+    });
   }
 
-  private async saveSession(sessionId: string, state: OpdState, inputs: any, aiHistory: any[]) {
-    await this.prisma.opd_sessions.update({ where: { session_id: sessionId }, data: { opd_state: state, collected_inputs: inputs, ai_history: aiHistory.slice(-20) } });
+  private async saveSession(
+    sessionId: string,
+    state: OpdState,
+    inputs: any,
+    aiHistory: any[],
+  ) {
+    await this.prisma.opd_sessions.update({
+      where: { session_id: sessionId },
+      data: {
+        opd_state: state,
+        collected_inputs: inputs,
+        ai_history: aiHistory.slice(-20),
+        // Persist member_id and case_id to top-level columns
+        // so /api/context/session/:id can resolve member profile directly
+        ...(inputs.memberId ? { member_id: inputs.memberId } : {}),
+        ...(inputs.caseId ? { case_id: inputs.caseId } : {}),
+      },
+    });
+  }
+
+
+  // ─── NOTIFICATION HELPER ─────────────────────────────────────────────────
+
+  private async createNotification(params: {
+    memberId?: string;
+    caseId?: string;
+    sessionId?: string;
+    type: string;
+    title: string;
+    message: string;
+    scheduledAt?: Date;
+  }): Promise<void> {
+    // Skip if no member or session ID is available
+    if (!params.memberId && !params.sessionId) return;
+    // Skip placeholder IDs
+    if (
+      params.caseId?.startsWith('SESSION_') ||
+      params.caseId?.startsWith('PENDING_')
+    )
+      return;
+
+    try {
+      await this.prisma.notifications.create({
+        data: {
+          member_id: params.memberId || null,
+          case_id: params.caseId || null,
+          session_id: params.sessionId || null,
+          type: params.type,
+          title: params.title,
+          message: params.message,
+          status: 'PENDING',
+          scheduled_at: params.scheduledAt || null,
+        } as any,
+      });
+      this.logger.log(`[NOTIFICATION] ${params.type}: ${params.title}`);
+    } catch (e) {
+      this.logger.warn(
+        `Failed to create notification: ${(e as Error).message}`,
+      );
+    }
   }
 
   // ─── HELPERS ──────────────────────────────────────────────────────────────
 
   private buildOptions(labels: string[]): JanaOption[] {
-    return labels.map((l) => ({ label: l, value: l.toLowerCase().replace(/\s+/g, '_') }));
+    return labels.map((l) => ({
+      label: l,
+      value: l.toLowerCase().replace(/\s+/g, '_'),
+    }));
   }
 
   private buildResponse(sessionId: string, result: any): JanaResponse {
@@ -1498,29 +2657,92 @@ Then, ask if they would like Janmitra to deliver the medicines securely to their
    * Universal Case Event Logger
    * Ensures every milestone is recorded in the case_events table for the context panel log.
    */
-  private async addCaseEvent(caseId: string, eventType: string, payload: any) {
-    // If the caseId is just a placeholder (SESSION_, NEW_MEMBER_, PENDING_), do not log to DB
-    // as case_id is a required UUID in the schema.
-    if (caseId.startsWith('SESSION_') || caseId.startsWith('NEW_MEMBER_') || caseId.startsWith('PENDING_')) {
-      this.logger.debug(`[EVENT] Skipping DB log for placeholder caseId: ${caseId}`);
+  public async addCaseEvent(caseId: string, eventType: string, payload: any, actorType: 'JANA_AI' | 'JANMITRA' = 'JANA_AI', sessionId?: string) {
+    // If we have a sessionId, we can log even if caseId is a placeholder
+    const isPlaceholder = 
+      caseId.startsWith('SESSION_') ||
+      caseId.startsWith('NEW_MEMBER_') ||
+      caseId.startsWith('PENDING_');
+
+    if (isPlaceholder && !sessionId) {
+      this.logger.debug(
+        `[EVENT] Skipping DB log for placeholder caseId: ${caseId} (no sessionId provided)`,
+      );
       return;
     }
 
     try {
+      // Validate UUID for caseId, or set to null
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const dbCaseId = uuidRegex.test(caseId) ? caseId : null;
+
       await this.prisma.case_events.create({
         data: {
-          case_id: caseId,
+          case_id: dbCaseId,
+          session_id: sessionId || null,
           event_type: eventType,
-          actor_type: 'JANA_AI',
+          actor_type: actorType,
           payload: {
             ...payload,
             timestamp: new Date().toISOString(),
           },
         },
       });
-      this.logger.log(`[EVENT] ${eventType} logged for case ${caseId}`);
+      this.logger.log(`[EVENT] ${eventType} logged for ${dbCaseId ? 'case ' + dbCaseId : 'session ' + sessionId}`);
     } catch (e) {
       this.logger.error(`Failed to log case event: ${e.message}`);
+    }
+  }
+
+  /**
+   * Logs a milestone event and creates a notification.
+   * This is used for "Permission to Proceed" gates.
+   */
+  public async triggerMilestone(session: any, state: OpdState) {
+    const info = MILESTONE_STATES[state];
+    if (!info) return;
+
+    const caseId = session.case_id || session.collected_inputs?.caseId;
+    if (caseId) {
+      await this.addCaseEvent(caseId, 'STEP_COMPLETED', {
+        state,
+        title: info.title,
+        message: info.message,
+      });
+    }
+
+    await this.createNotification({
+      memberId: session.member_id || session.collected_inputs?.memberId,
+      caseId: caseId,
+      sessionId: session.session_id,
+      type: 'SYSTEM',
+      title: info.title,
+      message: info.message,
+    });
+
+    this.logger.log(`[MILESTONE] ${state} reached for session ${session.session_id}`);
+  }
+
+  /**
+   * Links any documents uploaded during the triage phase (using session_id) 
+   * to the final medical case once it is created.
+   */
+  private async linkPendingDocuments(sessionId: string, caseId: string) {
+    try {
+      const result = await this.prisma.case_documents.updateMany({
+        where: {
+          session_id: sessionId,
+          case_id: null,
+        },
+        data: {
+          case_id: caseId,
+        },
+      });
+      if (result.count > 0) {
+        this.logger.log(`[MEDIA] Linked ${result.count} pending documents to case ${caseId}`);
+      }
+    } catch (e) {
+      this.logger.error(`Failed to link pending documents: ${e.message}`);
     }
   }
 }

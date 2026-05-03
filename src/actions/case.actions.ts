@@ -36,12 +36,18 @@ export class CaseActions {
           case_id: caseId,
           old_status: current.opd_state,
           new_status: newState,
-          remarks: remarks || `State transition: ${current.opd_state} → ${newState}`,
+          remarks:
+            remarks || `State transition: ${current.opd_state} → ${newState}`,
         },
       });
     });
 
-    await this.audit.logStateTransition(caseId, current.opd_state, newState, caseId);
+    await this.audit.logStateTransition(
+      caseId,
+      current.opd_state,
+      newState,
+      caseId,
+    );
     return { caseId, oldState: current.opd_state, newState };
   }
 
@@ -106,7 +112,9 @@ export class CaseActions {
       });
     });
 
-    await this.audit.log('CASE_ACTIONS', 'CLOSE_CASE', 'cases', caseId, { reason });
+    await this.audit.log('CASE_ACTIONS', 'CLOSE_CASE', 'cases', caseId, {
+      reason,
+    });
     return { caseId, status: 'CLOSED' };
   }
 }

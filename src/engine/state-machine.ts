@@ -8,51 +8,52 @@
 
 export enum OpdState {
   // ─── MEMBER IDENTIFICATION ─────────────────────────────
-  NEW                      = 'NEW',
-  CHECK_MEMBER             = 'CHECK_MEMBER',
-  CREATE_MEMBER            = 'CREATE_MEMBER',
-  ASK_NAME                 = 'ASK_NAME',
-  ASK_AGE                  = 'ASK_AGE',
-  ASK_GENDER               = 'ASK_GENDER',
-  ASK_HEIGHT               = 'ASK_HEIGHT',
-  ASK_WEIGHT               = 'ASK_WEIGHT',
-  ASK_BLOOD_GROUP          = 'ASK_BLOOD_GROUP',
+  NEW = 'NEW',
+  CHECK_MEMBER = 'CHECK_MEMBER',
+  CREATE_MEMBER = 'CREATE_MEMBER',
+  ASK_NAME = 'ASK_NAME',
+  ASK_AGE = 'ASK_AGE',
+  ASK_GENDER = 'ASK_GENDER',
+  ASK_HEIGHT = 'ASK_HEIGHT',
+  ASK_WEIGHT = 'ASK_WEIGHT',
+  ASK_BLOOD_GROUP = 'ASK_BLOOD_GROUP',
 
   // ─── LEGACY REGISTRATION (kept for backwards compat) ───
-  REGISTERING_NAME         = 'REGISTERING_NAME',
-  REGISTERING_EMAIL        = 'REGISTERING_EMAIL',
+  REGISTERING_NAME = 'REGISTERING_NAME',
+  REGISTERING_EMAIL = 'REGISTERING_EMAIL',
 
   // ─── TRIAGE ────────────────────────────────────────────
-  ID_VERIFIED              = 'ID_VERIFIED',
-  TRIAGED                  = 'TRIAGED',
-  EMERGENCY_CHECKED        = 'EMERGENCY_CHECKED',
-  MEDICAL_RECORD_READY     = 'MEDICAL_RECORD_READY',
-  CONSULTATION_DECIDED     = 'CONSULTATION_DECIDED',
+  ID_VERIFIED = 'ID_VERIFIED',
+  TRIAGED = 'TRIAGED',
+  EMERGENCY_CHECKED = 'EMERGENCY_CHECKED',
+  MEDICAL_RECORD_READY = 'MEDICAL_RECORD_READY',
+  CONSULTATION_DECIDED = 'CONSULTATION_DECIDED',
 
   // ─── CASE + APPOINTMENT ────────────────────────────────
-  CASE_CREATED             = 'CASE_CREATED',
-  APPOINTMENT_INIT         = 'APPOINTMENT_INIT',
-  ASK_TIME_PREFERENCE      = 'ASK_TIME_PREFERENCE',
-  ASK_DATE                 = 'ASK_DATE',
-  ASK_DOCTOR_PREFERENCE    = 'ASK_DOCTOR_PREFERENCE',
-  SHOW_DOCTORS             = 'SHOW_DOCTORS',
-  SELECT_DOCTOR            = 'SELECT_DOCTOR',
-  SHOW_SLOTS               = 'SHOW_SLOTS',
-  CONFIRM_BOOKING          = 'CONFIRM_BOOKING',
-  DOCTOR_ASSIGNED          = 'DOCTOR_ASSIGNED',
-  APPOINTMENT_BOOKED       = 'APPOINTMENT_BOOKED',
+  CASE_CREATED = 'CASE_CREATED',
+  APPOINTMENT_INIT = 'APPOINTMENT_INIT',
+  ASK_TIME_PREFERENCE = 'ASK_TIME_PREFERENCE',
+  ASK_DATE = 'ASK_DATE',
+  ASK_DOCTOR_PREFERENCE = 'ASK_DOCTOR_PREFERENCE',
+  ASK_PRIMARY_DOCTOR = 'ASK_PRIMARY_DOCTOR',
+  SHOW_DOCTORS = 'SHOW_DOCTORS',
+  SELECT_DOCTOR = 'SELECT_DOCTOR',
+  SHOW_SLOTS = 'SHOW_SLOTS',
+  CONFIRM_BOOKING = 'CONFIRM_BOOKING',
+  DOCTOR_ASSIGNED = 'DOCTOR_ASSIGNED',
+  APPOINTMENT_BOOKED = 'APPOINTMENT_BOOKED',
 
   // ─── CONSULTATION ──────────────────────────────────────
-  PRE_CONSULTATION         = 'PRE_CONSULTATION',
+  PRE_CONSULTATION = 'PRE_CONSULTATION',
   CONSULTATION_IN_PROGRESS = 'CONSULTATION_IN_PROGRESS',
-  CONSULTATION_COMPLETED   = 'CONSULTATION_COMPLETED',
-  OUTCOME_GENERATED        = 'OUTCOME_GENERATED',
-  SCHEDULE_TESTS           = 'SCHEDULE_TESTS',
-  ASK_DELIVERY_CONSENT     = 'ASK_DELIVERY_CONSENT',
-  ASK_DELIVERY_ADDRESS     = 'ASK_DELIVERY_ADDRESS',
-  FOLLOWUP_PENDING         = 'FOLLOWUP_PENDING',
-  TEST_COMPLETED           = 'TEST_COMPLETED',
-  CLOSED                   = 'CLOSED',
+  CONSULTATION_COMPLETED = 'CONSULTATION_COMPLETED',
+  OUTCOME_GENERATED = 'OUTCOME_GENERATED',
+  SCHEDULE_TESTS = 'SCHEDULE_TESTS',
+  ASK_DELIVERY_CONSENT = 'ASK_DELIVERY_CONSENT',
+  ASK_DELIVERY_ADDRESS = 'ASK_DELIVERY_ADDRESS',
+  FOLLOWUP_PENDING = 'FOLLOWUP_PENDING',
+  TEST_COMPLETED = 'TEST_COMPLETED',
+  CLOSED = 'CLOSED',
 }
 
 /**
@@ -61,94 +62,133 @@ export enum OpdState {
  */
 const TRANSITION_MAP: Record<OpdState, OpdState[]> = {
   // Member Identification
-  [OpdState.NEW]:                      [OpdState.CHECK_MEMBER, OpdState.CREATE_MEMBER, OpdState.ID_VERIFIED, OpdState.REGISTERING_NAME],
-  [OpdState.CHECK_MEMBER]:             [OpdState.ID_VERIFIED, OpdState.CREATE_MEMBER],
-  [OpdState.CREATE_MEMBER]:            [OpdState.ASK_NAME, OpdState.NEW],
-  [OpdState.ASK_NAME]:                 [OpdState.ASK_AGE],
-  [OpdState.ASK_AGE]:                  [OpdState.ASK_GENDER],
-  [OpdState.ASK_GENDER]:               [OpdState.ASK_HEIGHT],
-  [OpdState.ASK_HEIGHT]:               [OpdState.ASK_WEIGHT],
-  [OpdState.ASK_WEIGHT]:               [OpdState.ASK_BLOOD_GROUP],
-  [OpdState.ASK_BLOOD_GROUP]:          [OpdState.ID_VERIFIED],
+  [OpdState.NEW]: [
+    OpdState.CHECK_MEMBER,
+    OpdState.CREATE_MEMBER,
+    OpdState.ID_VERIFIED,
+    OpdState.REGISTERING_NAME,
+  ],
+  [OpdState.CHECK_MEMBER]: [OpdState.ID_VERIFIED, OpdState.CREATE_MEMBER],
+  [OpdState.CREATE_MEMBER]: [OpdState.ASK_NAME, OpdState.NEW],
+  [OpdState.ASK_NAME]: [OpdState.ASK_AGE],
+  [OpdState.ASK_AGE]: [OpdState.ASK_GENDER],
+  [OpdState.ASK_GENDER]: [OpdState.ASK_HEIGHT],
+  [OpdState.ASK_HEIGHT]: [OpdState.ASK_WEIGHT],
+  [OpdState.ASK_WEIGHT]: [OpdState.ASK_BLOOD_GROUP],
+  [OpdState.ASK_BLOOD_GROUP]: [OpdState.ID_VERIFIED],
 
   // Legacy Registration (kept for backward compatibility)
-  [OpdState.REGISTERING_NAME]:         [OpdState.REGISTERING_EMAIL],
-  [OpdState.REGISTERING_EMAIL]:        [OpdState.ID_VERIFIED],
+  [OpdState.REGISTERING_NAME]: [OpdState.REGISTERING_EMAIL],
+  [OpdState.REGISTERING_EMAIL]: [OpdState.ID_VERIFIED],
 
   // Triage
-  [OpdState.ID_VERIFIED]:              [OpdState.TRIAGED],
-  [OpdState.TRIAGED]:                  [OpdState.EMERGENCY_CHECKED],
-  [OpdState.EMERGENCY_CHECKED]:        [OpdState.MEDICAL_RECORD_READY, OpdState.CLOSED],
-  [OpdState.MEDICAL_RECORD_READY]:     [OpdState.CONSULTATION_DECIDED],
-  [OpdState.CONSULTATION_DECIDED]:     [OpdState.CASE_CREATED],
+  [OpdState.ID_VERIFIED]: [OpdState.TRIAGED],
+  [OpdState.TRIAGED]: [OpdState.EMERGENCY_CHECKED],
+  [OpdState.EMERGENCY_CHECKED]: [
+    OpdState.MEDICAL_RECORD_READY,
+    OpdState.CLOSED,
+  ],
+  [OpdState.MEDICAL_RECORD_READY]: [OpdState.CONSULTATION_DECIDED],
+  [OpdState.CONSULTATION_DECIDED]: [OpdState.CASE_CREATED],
 
   // Case + Guided Appointment Flow: doctor first, then date based on availability
-  [OpdState.CASE_CREATED]:             [OpdState.APPOINTMENT_INIT],
-  [OpdState.APPOINTMENT_INIT]:         [OpdState.ASK_TIME_PREFERENCE],
-  [OpdState.ASK_TIME_PREFERENCE]:      [OpdState.ASK_DOCTOR_PREFERENCE],
-  [OpdState.ASK_DOCTOR_PREFERENCE]:    [OpdState.SHOW_DOCTORS],
-  [OpdState.SHOW_DOCTORS]:             [OpdState.SELECT_DOCTOR],
-  [OpdState.SELECT_DOCTOR]:            [OpdState.ASK_DATE],
-  [OpdState.ASK_DATE]:                 [OpdState.SHOW_SLOTS],
-  [OpdState.SHOW_SLOTS]:               [OpdState.CONFIRM_BOOKING],
-  [OpdState.CONFIRM_BOOKING]:          [OpdState.DOCTOR_ASSIGNED, OpdState.SHOW_SLOTS, OpdState.ASK_DATE],
-  [OpdState.DOCTOR_ASSIGNED]:          [OpdState.APPOINTMENT_BOOKED],
-  [OpdState.APPOINTMENT_BOOKED]:       [OpdState.PRE_CONSULTATION],
+  [OpdState.CASE_CREATED]: [OpdState.APPOINTMENT_INIT],
+  [OpdState.APPOINTMENT_INIT]: [OpdState.ASK_TIME_PREFERENCE],
+  [OpdState.ASK_TIME_PREFERENCE]: [OpdState.ASK_DOCTOR_PREFERENCE],
+  [OpdState.ASK_DOCTOR_PREFERENCE]: [OpdState.ASK_PRIMARY_DOCTOR],
+  [OpdState.ASK_PRIMARY_DOCTOR]: [OpdState.SHOW_DOCTORS],
+  [OpdState.SHOW_DOCTORS]: [OpdState.SELECT_DOCTOR],
+  [OpdState.SELECT_DOCTOR]: [OpdState.ASK_DATE],
+  [OpdState.ASK_DATE]: [OpdState.SHOW_SLOTS],
+  [OpdState.SHOW_SLOTS]: [OpdState.CONFIRM_BOOKING],
+  [OpdState.CONFIRM_BOOKING]: [
+    OpdState.DOCTOR_ASSIGNED,
+    OpdState.SHOW_SLOTS,
+    OpdState.ASK_DATE,
+  ],
+  [OpdState.DOCTOR_ASSIGNED]: [OpdState.APPOINTMENT_BOOKED],
+  [OpdState.APPOINTMENT_BOOKED]: [OpdState.PRE_CONSULTATION],
 
   // Consultation
-  [OpdState.PRE_CONSULTATION]:         [OpdState.CONSULTATION_IN_PROGRESS],
+  [OpdState.PRE_CONSULTATION]: [OpdState.CONSULTATION_IN_PROGRESS],
   [OpdState.CONSULTATION_IN_PROGRESS]: [OpdState.CONSULTATION_COMPLETED],
-  [OpdState.CONSULTATION_COMPLETED]:   [OpdState.OUTCOME_GENERATED],
-  [OpdState.OUTCOME_GENERATED]:        [OpdState.SCHEDULE_TESTS, OpdState.ASK_DELIVERY_CONSENT, OpdState.FOLLOWUP_PENDING, OpdState.TEST_COMPLETED],
-  [OpdState.SCHEDULE_TESTS]:           [OpdState.ASK_DELIVERY_CONSENT, OpdState.ASK_DELIVERY_ADDRESS, OpdState.FOLLOWUP_PENDING, OpdState.TEST_COMPLETED],
-  [OpdState.ASK_DELIVERY_CONSENT]:     [OpdState.ASK_DELIVERY_ADDRESS, OpdState.FOLLOWUP_PENDING, OpdState.TEST_COMPLETED],
-  [OpdState.ASK_DELIVERY_ADDRESS]:     [OpdState.FOLLOWUP_PENDING, OpdState.TEST_COMPLETED],
-  [OpdState.FOLLOWUP_PENDING]:         [OpdState.CLOSED, OpdState.APPOINTMENT_INIT, OpdState.TEST_COMPLETED],
-  [OpdState.TEST_COMPLETED]:           [OpdState.FOLLOWUP_PENDING, OpdState.CLOSED, OpdState.APPOINTMENT_INIT],
-  [OpdState.CLOSED]:                   [],
+  [OpdState.CONSULTATION_COMPLETED]: [OpdState.OUTCOME_GENERATED],
+  [OpdState.OUTCOME_GENERATED]: [
+    OpdState.SCHEDULE_TESTS,
+    OpdState.ASK_DELIVERY_CONSENT,
+    OpdState.FOLLOWUP_PENDING,
+    OpdState.TEST_COMPLETED,
+  ],
+  [OpdState.SCHEDULE_TESTS]: [
+    OpdState.ASK_DELIVERY_CONSENT,
+    OpdState.ASK_DELIVERY_ADDRESS,
+    OpdState.FOLLOWUP_PENDING,
+    OpdState.TEST_COMPLETED,
+  ],
+  [OpdState.ASK_DELIVERY_CONSENT]: [
+    OpdState.ASK_DELIVERY_ADDRESS,
+    OpdState.FOLLOWUP_PENDING,
+    OpdState.TEST_COMPLETED,
+  ],
+  [OpdState.ASK_DELIVERY_ADDRESS]: [
+    OpdState.FOLLOWUP_PENDING,
+    OpdState.TEST_COMPLETED,
+  ],
+  [OpdState.FOLLOWUP_PENDING]: [
+    OpdState.CLOSED,
+    OpdState.APPOINTMENT_INIT,
+    OpdState.TEST_COMPLETED,
+  ],
+  [OpdState.TEST_COMPLETED]: [
+    OpdState.FOLLOWUP_PENDING,
+    OpdState.CLOSED,
+    OpdState.APPOINTMENT_INIT,
+  ],
+  [OpdState.CLOSED]: [],
 };
 
 /**
  * Human-readable labels for each state.
  */
 export const STATE_LABELS: Record<OpdState, string> = {
-  [OpdState.NEW]:                      'Welcome',
-  [OpdState.CHECK_MEMBER]:             'Member Check',
-  [OpdState.CREATE_MEMBER]:            'Create Account',
-  [OpdState.ASK_NAME]:                 'Your Name',
-  [OpdState.ASK_AGE]:                  'Your Age',
-  [OpdState.ASK_GENDER]:               'Your Gender',
-  [OpdState.ASK_HEIGHT]:               'Your Height',
-  [OpdState.ASK_WEIGHT]:               'Your Weight',
-  [OpdState.ASK_BLOOD_GROUP]:          'Blood Group',
-  [OpdState.REGISTERING_NAME]:         'Registration: Name',
-  [OpdState.REGISTERING_EMAIL]:        'Registration: Email',
-  [OpdState.ID_VERIFIED]:              'Identity Verified',
-  [OpdState.TRIAGED]:                  'Symptoms Assessed',
-  [OpdState.EMERGENCY_CHECKED]:        'Emergency Check',
-  [OpdState.MEDICAL_RECORD_READY]:     'Medical Record Ready',
-  [OpdState.CONSULTATION_DECIDED]:     'Consultation Type Selected',
-  [OpdState.CASE_CREATED]:             'Case Created',
-  [OpdState.APPOINTMENT_INIT]:         'Booking Appointment',
-  [OpdState.ASK_TIME_PREFERENCE]:      'Time Preference',
-  [OpdState.ASK_DATE]:                 'Appointment Date',
-  [OpdState.ASK_DOCTOR_PREFERENCE]:    'Doctor Preference',
-  [OpdState.SHOW_DOCTORS]:             'Available Doctors',
-  [OpdState.SELECT_DOCTOR]:            'Doctor Selected',
-  [OpdState.SHOW_SLOTS]:               'Available Slots',
-  [OpdState.CONFIRM_BOOKING]:          'Confirm Booking',
-  [OpdState.DOCTOR_ASSIGNED]:          'Doctor Assigned',
-  [OpdState.APPOINTMENT_BOOKED]:       'Appointment Booked',
-  [OpdState.PRE_CONSULTATION]:         'Pre-Consultation',
+  [OpdState.NEW]: 'Welcome',
+  [OpdState.CHECK_MEMBER]: 'Phone Verification',
+  [OpdState.CREATE_MEMBER]: 'Create Account',
+  [OpdState.ASK_NAME]: 'Your Name',
+  [OpdState.ASK_AGE]: 'Your Age',
+  [OpdState.ASK_GENDER]: 'Your Gender',
+  [OpdState.ASK_HEIGHT]: 'Your Height',
+  [OpdState.ASK_WEIGHT]: 'Your Weight',
+  [OpdState.ASK_BLOOD_GROUP]: 'Blood Group',
+  [OpdState.REGISTERING_NAME]: 'Registration: Name',
+  [OpdState.REGISTERING_EMAIL]: 'Registration: Email',
+  [OpdState.ID_VERIFIED]: 'Identity Verified',
+  [OpdState.TRIAGED]: 'Symptoms Assessed',
+  [OpdState.EMERGENCY_CHECKED]: 'Emergency Check',
+  [OpdState.MEDICAL_RECORD_READY]: 'Medical Record Ready',
+  [OpdState.CONSULTATION_DECIDED]: 'Consultation Type Selected',
+  [OpdState.CASE_CREATED]: 'Case Created',
+  [OpdState.APPOINTMENT_INIT]: 'Booking Appointment',
+  [OpdState.ASK_TIME_PREFERENCE]: 'Time Preference',
+  [OpdState.ASK_DATE]: 'Appointment Date',
+  [OpdState.ASK_DOCTOR_PREFERENCE]: 'Doctor Preference',
+  [OpdState.ASK_PRIMARY_DOCTOR]: 'Primary Doctor Check',
+  [OpdState.SHOW_DOCTORS]: 'Available Doctors',
+  [OpdState.SELECT_DOCTOR]: 'Doctor Selected',
+  [OpdState.SHOW_SLOTS]: 'Available Slots',
+  [OpdState.CONFIRM_BOOKING]: 'Confirm Booking',
+  [OpdState.DOCTOR_ASSIGNED]: 'Doctor Assigned',
+  [OpdState.APPOINTMENT_BOOKED]: 'Appointment Booked',
+  [OpdState.PRE_CONSULTATION]: 'Pre-Consultation',
   [OpdState.CONSULTATION_IN_PROGRESS]: 'Consultation In Progress',
-  [OpdState.CONSULTATION_COMPLETED]:   'Consultation Completed',
-  [OpdState.OUTCOME_GENERATED]:        'Outcome Generated',
-  [OpdState.SCHEDULE_TESTS]:           'Scheduling Tests',
-  [OpdState.ASK_DELIVERY_CONSENT]:     'Pharmacy Delivery',
-  [OpdState.ASK_DELIVERY_ADDRESS]:     'Delivery Address',
-  [OpdState.FOLLOWUP_PENDING]:         'Follow-up / Closure',
-  [OpdState.TEST_COMPLETED]:           'Diagnostic Report Review',
-  [OpdState.CLOSED]:                   'Case Closed',
+  [OpdState.CONSULTATION_COMPLETED]: 'Consultation Completed',
+  [OpdState.OUTCOME_GENERATED]: 'Outcome Generated',
+  [OpdState.SCHEDULE_TESTS]: 'Scheduling Tests',
+  [OpdState.ASK_DELIVERY_CONSENT]: 'Pharmacy Delivery',
+  [OpdState.ASK_DELIVERY_ADDRESS]: 'Delivery Address',
+  [OpdState.FOLLOWUP_PENDING]: 'Follow-up / Closure',
+  [OpdState.TEST_COMPLETED]: 'Diagnostic Report Review',
+  [OpdState.CLOSED]: 'Case Closed',
 };
 
 /**
@@ -163,9 +203,10 @@ export interface StateExpectation {
 
 export const STATE_EXPECTATIONS: Record<OpdState, StateExpectation> = {
   [OpdState.NEW]: {
-    prompt: 'Please provide your Member ID to begin, or choose to create a new account.',
+    prompt:
+      'Please provide your Phone Number to begin, or choose to create a new medical record.',
     inputType: 'text',
-    field: 'memberId',
+    field: 'phone',
   },
   [OpdState.CHECK_MEMBER]: {
     prompt: 'Checking your membership...',
@@ -205,7 +246,7 @@ export const STATE_EXPECTATIONS: Record<OpdState, StateExpectation> = {
   [OpdState.ASK_BLOOD_GROUP]: {
     prompt: 'What is your blood group?',
     inputType: 'selection',
-    options: ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'I don\'t know'],
+    options: ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', "I don't know"],
     field: 'newMemberBloodGroup',
   },
   [OpdState.REGISTERING_NAME]: {
@@ -219,7 +260,8 @@ export const STATE_EXPECTATIONS: Record<OpdState, StateExpectation> = {
     field: 'newMemberEmail',
   },
   [OpdState.ID_VERIFIED]: {
-    prompt: 'Please describe your symptoms, how long you have been experiencing them, and rate the severity (mild, moderate, severe).',
+    prompt:
+      'Please describe your symptoms, how long you have been experiencing them, and rate the severity (mild, moderate, severe).',
     inputType: 'text',
     field: 'triageInput',
   },
@@ -246,13 +288,17 @@ export const STATE_EXPECTATIONS: Record<OpdState, StateExpectation> = {
     inputType: 'none',
   },
   [OpdState.APPOINTMENT_INIT]: {
-    prompt: 'Let\'s book your appointment!',
+    prompt: "Let's book your appointment!",
     inputType: 'none',
   },
   [OpdState.ASK_TIME_PREFERENCE]: {
     prompt: 'What time of day works best for you?',
     inputType: 'selection',
-    options: ['Morning (8AM–12PM)', 'Afternoon (12PM–4PM)', 'Evening (4PM–8PM)'],
+    options: [
+      'Morning (8AM–12PM)',
+      'Afternoon (12PM–4PM)',
+      'Evening (4PM–8PM)',
+    ],
     field: 'timePreference',
   },
   [OpdState.ASK_DOCTOR_PREFERENCE]: {
@@ -260,6 +306,16 @@ export const STATE_EXPECTATIONS: Record<OpdState, StateExpectation> = {
     inputType: 'selection',
     options: ['Show me available doctors', 'Recommend the best match'],
     field: 'doctorPreference',
+  },
+  [OpdState.ASK_PRIMARY_DOCTOR]: {
+    prompt:
+      'Do you have a primary doctor you would like to consult, or should I suggest the best doctor for you?',
+    inputType: 'selection',
+    options: [
+      'I have a primary doctor',
+      'Suggest a doctor for me',
+    ],
+    field: 'hasPrimaryDoctor',
   },
   [OpdState.ASK_DATE]: {
     prompt: 'Which date works for you? (based on doctor availability)',
@@ -290,7 +346,8 @@ export const STATE_EXPECTATIONS: Record<OpdState, StateExpectation> = {
     inputType: 'none',
   },
   [OpdState.APPOINTMENT_BOOKED]: {
-    prompt: 'Your appointment is confirmed. Preparing pre-consultation information...',
+    prompt:
+      'Your appointment is confirmed. Preparing pre-consultation information...',
     inputType: 'none',
   },
   [OpdState.PRE_CONSULTATION]: {
@@ -308,7 +365,8 @@ export const STATE_EXPECTATIONS: Record<OpdState, StateExpectation> = {
     inputType: 'none',
   },
   [OpdState.OUTCOME_GENERATED]: {
-    prompt: 'Your consultation outcomes are ready. How would you like to proceed?',
+    prompt:
+      'Your consultation outcomes are ready. How would you like to proceed?',
     inputType: 'selection',
     field: 'outcomeAction',
   },
@@ -317,7 +375,8 @@ export const STATE_EXPECTATIONS: Record<OpdState, StateExpectation> = {
     inputType: 'none',
   },
   [OpdState.ASK_DELIVERY_CONSENT]: {
-    prompt: 'Would you like Janmitra to deliver the medicines securely to your door?',
+    prompt:
+      'Would you like Janmitra to deliver the medicines securely to your door?',
     inputType: 'selection',
     options: ['Deliver to my door', 'I will get it myself'],
   },
@@ -333,12 +392,14 @@ export const STATE_EXPECTATIONS: Record<OpdState, StateExpectation> = {
     field: 'followupDecision',
   },
   [OpdState.TEST_COMPLETED]: {
-    prompt: 'Your laboratory reports are ready. Would you like to review them and schedule a follow-up with your doctor?',
+    prompt:
+      'Your laboratory reports are ready. Would you like to review them and schedule a follow-up with your doctor?',
     inputType: 'selection',
     options: ['Review My Reports', 'Schedule Follow-up Consultation'],
   },
   [OpdState.CLOSED]: {
-    prompt: 'Your case has been closed. Thank you for using Jana AI. Stay healthy! 💚',
+    prompt:
+      'Your case has been closed. Thank you for using Jana AI. Stay healthy! 💚',
     inputType: 'none',
   },
 };
@@ -395,8 +456,27 @@ export function getProgressPercent(state: OpdState): number {
   const idx = mainFlow.indexOf(state);
   if (idx === -1) {
     // For micro-states, use approx range
-    const microBefore = [OpdState.CHECK_MEMBER, OpdState.CREATE_MEMBER, OpdState.ASK_NAME, OpdState.ASK_AGE, OpdState.ASK_GENDER, OpdState.ASK_HEIGHT, OpdState.ASK_WEIGHT, OpdState.ASK_BLOOD_GROUP];
-    const microAppt = [OpdState.APPOINTMENT_INIT, OpdState.ASK_TIME_PREFERENCE, OpdState.ASK_DATE, OpdState.ASK_DOCTOR_PREFERENCE, OpdState.SHOW_DOCTORS, OpdState.SELECT_DOCTOR, OpdState.SHOW_SLOTS, OpdState.CONFIRM_BOOKING, OpdState.DOCTOR_ASSIGNED];
+    const microBefore = [
+      OpdState.CHECK_MEMBER,
+      OpdState.CREATE_MEMBER,
+      OpdState.ASK_NAME,
+      OpdState.ASK_AGE,
+      OpdState.ASK_GENDER,
+      OpdState.ASK_HEIGHT,
+      OpdState.ASK_WEIGHT,
+      OpdState.ASK_BLOOD_GROUP,
+    ];
+    const microAppt = [
+      OpdState.APPOINTMENT_INIT,
+      OpdState.ASK_TIME_PREFERENCE,
+      OpdState.ASK_DATE,
+      OpdState.ASK_DOCTOR_PREFERENCE,
+      OpdState.SHOW_DOCTORS,
+      OpdState.SELECT_DOCTOR,
+      OpdState.SHOW_SLOTS,
+      OpdState.CONFIRM_BOOKING,
+      OpdState.DOCTOR_ASSIGNED,
+    ];
     if (microBefore.includes(state)) return 5;
     if (microAppt.includes(state)) return 50;
     return 0;

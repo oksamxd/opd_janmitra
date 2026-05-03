@@ -8,19 +8,23 @@ datasource db {
 }
 
 model opd_sessions {
-  session_id       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  member_id        String?  @db.Uuid
-  case_id          String?  @db.Uuid
-  opd_state        String   @default("NEW")
-  collected_inputs Json     @default("{}")
-  trigger_history  Json     @default("[]")
-  ai_history       Json     @default("[]")
-  is_active        Boolean  @default(true)
-  created_at       DateTime @default(now())
-  updated_at       DateTime @updatedAt
+  session_id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  member_id           String?  @db.Uuid
+  case_id             String?  @db.Uuid
+  opd_state           String   @default("NEW")
+  collected_inputs    Json     @default("{}")
+  trigger_history     Json     @default("[]")
+  ai_history          Json     @default("[]")
+  is_active           Boolean  @default(true)
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+  controlled_by       String   @default("AI")
+  janmitra_id         String?  @db.Uuid
+  language_preference String   @default("English")
 
   @@index([member_id])
   @@index([is_active])
+  @@index([controlled_by])
 }
 
 model cases {
@@ -74,15 +78,17 @@ model case_services {
 
 model case_events {
   event_id   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  case_id    String   @db.Uuid
+  case_id    String?  @db.Uuid
   service_id String?  @db.Uuid
   event_type String
   actor_type String
   actor_id   String?
   payload    Json?
   created_at DateTime @default(now())
+  session_id String?
 
   @@index([case_id])
+  @@index([session_id])
   @@index([event_type])
 }
 
@@ -98,11 +104,12 @@ model case_status_history {
 
 model case_documents {
   document_id   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  case_id       String    @db.Uuid
+  case_id       String?   @db.Uuid
   file_url      String
   document_type String?
   uploaded_at   DateTime? @default(now())
-  cases         cases     @relation(fields: [case_id], references: [case_id], onDelete: Cascade)
+  session_id    String?
+  cases         cases?    @relation(fields: [case_id], references: [case_id], onDelete: Cascade)
 }
 
 model ai_interactions {
@@ -321,4 +328,50 @@ model users {
   email      String   @unique
   created_at DateTime @default(now())
   password   String
+}
+
+model notifications {
+  notification_id String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  member_id       String?   @db.Uuid
+  case_id         String?   @db.Uuid
+  session_id      String?   @db.Uuid
+  type            String
+  title           String
+  message         String
+  status          String    @default("PENDING")
+  scheduled_at    DateTime?
+  read_at         DateTime?
+  created_at      DateTime  @default(now())
+
+  @@index([member_id])
+  @@index([session_id])
+  @@index([status])
+  @@index([case_id])
+}
+
+model opd_visits {
+  visit_id       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  case_id        String    @db.Uuid
+  visit_type     String    @default("FOLLOWUP")
+  appointment_id String?   @db.Uuid
+  status         String    @default("SCHEDULED")
+  notes          String?
+  scheduled_at   DateTime?
+  completed_at   DateTime?
+  created_at     DateTime  @default(now())
+
+  @@index([case_id])
+  @@index([status])
+}
+
+model janmitra_associates {
+  janmitra_id  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  full_name    String
+  avatar_url   String?
+  role         String   @default("Janmitra Associate")
+  phone        String?
+  is_available Boolean  @default(true)
+  created_at   DateTime @default(now())
+
+  @@index([is_available])
 }

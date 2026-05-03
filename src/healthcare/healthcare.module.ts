@@ -9,6 +9,8 @@ import { VoiceController } from '../api/voice.controller';
 import { LabController } from '../api/lab.controller';
 import { PharmacyController } from '../api/pharmacy.controller';
 import { EventsController } from '../api/events.controller';
+import { ContextController } from '../api/context.controller';
+import { MediaController } from '../api/media.controller';
 
 // Engine
 import { AuditLogger } from '../engine/audit-logger';
@@ -35,6 +37,8 @@ import { JanaOrchestratorService } from '../orchestrator/jana-orchestrator.servi
     LabController,
     PharmacyController,
     EventsController,
+    ContextController,
+    MediaController,
   ],
   providers: [
     PrismaService,

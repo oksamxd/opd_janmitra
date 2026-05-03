@@ -1,6 +1,6 @@
 /**
  * Audit Logger — Enterprise audit trail
- * 
+ *
  * Logs every trigger, state change, error, and API call.
  */
 
@@ -39,9 +39,13 @@ export class AuditLogger {
       });
 
       if (error) {
-        this.logger.error(`[AUDIT] ${actor} | ${action} | ${entity}:${entityId} | ERROR: ${error}`);
+        this.logger.error(
+          `[AUDIT] ${actor} | ${action} | ${entity}:${entityId} | ERROR: ${error}`,
+        );
       } else {
-        this.logger.log(`[AUDIT] ${actor} | ${action} | ${entity}:${entityId || 'N/A'}`);
+        this.logger.log(
+          `[AUDIT] ${actor} | ${action} | ${entity}:${entityId || 'N/A'}`,
+        );
       }
     } catch (e) {
       // Audit logging should never crash the system

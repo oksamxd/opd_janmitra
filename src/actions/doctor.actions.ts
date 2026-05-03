@@ -22,7 +22,9 @@ export class DoctorActions {
   async getDoctorsBySymptoms(symptomsText: string) {
     const { specialty, matchedKeywords } = mapSymptomsToSpecialty(symptomsText);
 
-    this.logger.log(`Symptom mapping: "${symptomsText}" → ${specialty} (matched: ${matchedKeywords.join(', ')})`);
+    this.logger.log(
+      `Symptom mapping: "${symptomsText}" → ${specialty} (matched: ${matchedKeywords.join(', ')})`,
+    );
 
     const doctors = await this.prisma.associates.findMany({
       where: {
@@ -47,10 +49,18 @@ export class DoctorActions {
         const anyDoctor = await this.prisma.associates.findMany({
           where: { role: 'DOCTOR', is_available: true },
         });
-        return { doctors: anyDoctor, specialty: 'General Medicine', matchedKeywords };
+        return {
+          doctors: anyDoctor,
+          specialty: 'General Medicine',
+          matchedKeywords,
+        };
       }
 
-      return { doctors: fallback, specialty: 'General Medicine', matchedKeywords };
+      return {
+        doctors: fallback,
+        specialty: 'General Medicine',
+        matchedKeywords,
+      };
     }
 
     return { doctors, specialty, matchedKeywords };

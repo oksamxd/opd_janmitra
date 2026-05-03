@@ -1,6 +1,6 @@
 /**
  * AI Service — Conversation formatter
- * 
+ *
  * The AI is NOT a decision maker. The state machine decides.
  * The AI formats responses to be empathetic and contextual.
  */

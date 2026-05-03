@@ -25,7 +25,7 @@ export class PharmacyController {
       orderBy: { created_at: 'asc' },
     });
 
-    return prescriptions.map(p => ({
+    return prescriptions.map((p) => ({
       prescriptionId: p.prescription_id,
       caseId: p.case_id,
       items: p.items,
@@ -37,7 +37,7 @@ export class PharmacyController {
   @Post('dispatch/:prescriptionId')
   async dispatchMedicine(
     @Param('prescriptionId') prescriptionId: string,
-    @Body() body: { notes: string; caseId: string }
+    @Body() body: { notes: string; caseId: string },
   ) {
     await this.prisma.$transaction(async (tx) => {
       // Update prescription

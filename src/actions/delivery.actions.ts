@@ -27,7 +27,13 @@ export class DeliveryActions {
       },
     });
 
-    await this.audit.log('DELIVERY_ACTIONS', 'SCHEDULE_DIAGNOSTIC', 'test_orders', testOrderId, { scheduledAt });
+    await this.audit.log(
+      'DELIVERY_ACTIONS',
+      'SCHEDULE_DIAGNOSTIC',
+      'test_orders',
+      testOrderId,
+      { scheduledAt },
+    );
     return updated;
   }
 
@@ -56,11 +62,17 @@ export class DeliveryActions {
       },
     });
 
-    await this.audit.log('DELIVERY_ACTIONS', 'ARRANGE_DELIVERY', 'deliveries', delivery.delivery_id, {
-      prescriptionId,
-      address,
-      eta,
-    });
+    await this.audit.log(
+      'DELIVERY_ACTIONS',
+      'ARRANGE_DELIVERY',
+      'deliveries',
+      delivery.delivery_id,
+      {
+        prescriptionId,
+        address,
+        eta,
+      },
+    );
 
     return { delivery, isNew: true };
   }

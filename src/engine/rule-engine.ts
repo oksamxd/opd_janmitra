@@ -1,6 +1,6 @@
 /**
  * Rule Engine — Externalized clinical decision logic
- * 
+ *
  * Maps symptoms to specialties, determines outcomes,
  * and provides configurable doctor decision rules.
  */
@@ -14,26 +14,127 @@ export interface SymptomMapping {
 }
 
 export const SYMPTOM_SPECIALTY_MAP: SymptomMapping[] = [
-  { keywords: ['fever', 'cold', 'cough', 'flu', 'viral', 'weakness', 'fatigue', 'body ache'], specialty: 'General Medicine' },
-  { keywords: ['chest pain', 'heart', 'palpitation', 'blood pressure', 'hypertension', 'cardiac'], specialty: 'Cardiology', severity_boost: true },
-  { keywords: ['joint pain', 'back pain', 'fracture', 'bone', 'sprain', 'arthritis', 'knee'], specialty: 'Orthopedics' },
-  { keywords: ['skin', 'rash', 'acne', 'eczema', 'allergy', 'itching', 'dermatitis'], specialty: 'Dermatology' },
-  { keywords: ['ear', 'nose', 'throat', 'sinus', 'tonsil', 'hearing', 'voice'], specialty: 'ENT' },
-  { keywords: ['headache', 'migraine', 'dizziness', 'seizure', 'numbness', 'nerve', 'brain'], specialty: 'Neurology', severity_boost: true },
-  { keywords: ['child', 'infant', 'baby', 'pediatric', 'vaccination', 'growth'], specialty: 'Pediatrics' },
-  { keywords: ['pregnancy', 'menstrual', 'period', 'gynec', 'uterus', 'ovary', 'pcos'], specialty: 'Gynecology' },
-  { keywords: ['stomach', 'digestion', 'vomiting', 'diarrhea', 'nausea', 'abdomen', 'gastric', 'acid reflux'], specialty: 'Gastroenterology' },
-  { keywords: ['eye', 'vision', 'blurry', 'cataract', 'retina'], specialty: 'Ophthalmology' },
-  { keywords: ['diabetes', 'thyroid', 'hormone', 'insulin', 'sugar'], specialty: 'Endocrinology' },
+  {
+    keywords: [
+      'fever',
+      'cold',
+      'cough',
+      'flu',
+      'viral',
+      'weakness',
+      'fatigue',
+      'body ache',
+    ],
+    specialty: 'General Medicine',
+  },
+  {
+    keywords: [
+      'chest pain',
+      'heart',
+      'palpitation',
+      'blood pressure',
+      'hypertension',
+      'cardiac',
+    ],
+    specialty: 'Cardiology',
+    severity_boost: true,
+  },
+  {
+    keywords: [
+      'joint pain',
+      'back pain',
+      'fracture',
+      'bone',
+      'sprain',
+      'arthritis',
+      'knee',
+    ],
+    specialty: 'Orthopedics',
+  },
+  {
+    keywords: [
+      'skin',
+      'rash',
+      'acne',
+      'eczema',
+      'allergy',
+      'itching',
+      'dermatitis',
+    ],
+    specialty: 'Dermatology',
+  },
+  {
+    keywords: ['ear', 'nose', 'throat', 'sinus', 'tonsil', 'hearing', 'voice'],
+    specialty: 'ENT',
+  },
+  {
+    keywords: [
+      'headache',
+      'migraine',
+      'dizziness',
+      'seizure',
+      'numbness',
+      'nerve',
+      'brain',
+    ],
+    specialty: 'Neurology',
+    severity_boost: true,
+  },
+  {
+    keywords: ['child', 'infant', 'baby', 'pediatric', 'vaccination', 'growth'],
+    specialty: 'Pediatrics',
+  },
+  {
+    keywords: [
+      'pregnancy',
+      'menstrual',
+      'period',
+      'gynec',
+      'uterus',
+      'ovary',
+      'pcos',
+    ],
+    specialty: 'Gynecology',
+  },
+  {
+    keywords: [
+      'stomach',
+      'digestion',
+      'vomiting',
+      'diarrhea',
+      'nausea',
+      'abdomen',
+      'gastric',
+      'acid reflux',
+    ],
+    specialty: 'Gastroenterology',
+  },
+  {
+    keywords: ['eye', 'vision', 'blurry', 'cataract', 'retina'],
+    specialty: 'Ophthalmology',
+  },
+  {
+    keywords: ['diabetes', 'thyroid', 'hormone', 'insulin', 'sugar'],
+    specialty: 'Endocrinology',
+  },
   { keywords: ['urinary', 'kidney', 'bladder', 'urine'], specialty: 'Urology' },
 ];
 
 /**
  * Match symptoms text to specialty. Returns best match or 'General Medicine'.
  */
-export function mapSymptomsToSpecialty(symptomsText: string): { specialty: string; matchedKeywords: string[]; isSevere: boolean } {
+export function mapSymptomsToSpecialty(symptomsText: string): {
+  specialty: string;
+  matchedKeywords: string[];
+  isSevere: boolean;
+} {
   const text = symptomsText.toLowerCase();
-  let bestMatch = { specialty: 'General Medicine', matchedKeywords: [] as string[], score: 0, isSevere: false };
+  let bestMatch = {
+    specialty: 'General Medicine',
+    matchedKeywords: [] as string[],
+    score: 0,
+    isSevere: false,
+  };
 
   for (const mapping of SYMPTOM_SPECIALTY_MAP) {
     const matched = mapping.keywords.filter((kw) => text.includes(kw));
@@ -57,10 +158,23 @@ export function mapSymptomsToSpecialty(symptomsText: string): { specialty: strin
 // ─── Emergency Detection ────────────────────────────────
 
 const EMERGENCY_KEYWORDS = [
-  'chest pain', 'heart attack', 'stroke', 'breathing difficulty',
-  'unconscious', 'seizure', 'severe bleeding', 'accident',
-  'suicidal', 'overdose', 'poisoning', 'choking', 'anaphylaxis',
-  'cannot breathe', 'unbearable pain', 'fainting', 'collapse',
+  'chest pain',
+  'heart attack',
+  'stroke',
+  'breathing difficulty',
+  'unconscious',
+  'seizure',
+  'severe bleeding',
+  'accident',
+  'suicidal',
+  'overdose',
+  'poisoning',
+  'choking',
+  'anaphylaxis',
+  'cannot breathe',
+  'unbearable pain',
+  'fainting',
+  'collapse',
 ];
 
 export function isEmergency(symptomsText: string): boolean {
@@ -72,18 +186,38 @@ export function isEmergency(symptomsText: string): boolean {
 
 export type SeverityLevel = 'MILD' | 'MODERATE' | 'SEVERE' | 'CRITICAL';
 
-export function assessSeverity(symptomsText: string, duration?: string): SeverityLevel {
+export function assessSeverity(
+  symptomsText: string,
+  duration?: string,
+): SeverityLevel {
   const text = symptomsText.toLowerCase();
 
   // Check explicit severity mentions
-  if (text.includes('severe') || text.includes('unbearable') || text.includes('extreme')) return 'SEVERE';
-  if (text.includes('moderate') || text.includes('noticeable')) return 'MODERATE';
-  if (text.includes('mild') || text.includes('slight') || text.includes('minor')) return 'MILD';
+  if (
+    text.includes('severe') ||
+    text.includes('unbearable') ||
+    text.includes('extreme')
+  )
+    return 'SEVERE';
+  if (text.includes('moderate') || text.includes('noticeable'))
+    return 'MODERATE';
+  if (
+    text.includes('mild') ||
+    text.includes('slight') ||
+    text.includes('minor')
+  )
+    return 'MILD';
 
   // Check duration-based severity
   if (duration) {
     const d = duration.toLowerCase();
-    if (d.includes('week') || d.includes('month') || d.includes('year') || d.includes('chronic')) return 'MODERATE';
+    if (
+      d.includes('week') ||
+      d.includes('month') ||
+      d.includes('year') ||
+      d.includes('chronic')
+    )
+      return 'MODERATE';
   }
 
   // Check symptom-based severity
@@ -119,7 +253,8 @@ export function decideOutcome(
   if (severity === 'CRITICAL') {
     return {
       types: ['TEST', 'PRESCRIPTION', 'REFERRAL'],
-      reasoning: 'Critical severity — full workup with specialist referral required.',
+      reasoning:
+        'Critical severity — full workup with specialist referral required.',
     };
   }
 
@@ -136,10 +271,16 @@ export function decideOutcome(
   }
 
   // Chronic/long-duration: test required
-  if (text.includes('chronic') || text.includes('weeks') || text.includes('months') || text.includes('recurring')) {
+  if (
+    text.includes('chronic') ||
+    text.includes('weeks') ||
+    text.includes('months') ||
+    text.includes('recurring')
+  ) {
     return {
       types: ['TEST', 'PRESCRIPTION'],
-      reasoning: 'Chronic or recurring condition — diagnostic confirmation needed.',
+      reasoning:
+        'Chronic or recurring condition — diagnostic confirmation needed.',
     };
   }
 
@@ -159,7 +300,11 @@ export function decideOutcome(
   }
 
   // Default: fever/cold/flu → prescription + optional test
-  if (text.includes('fever') || text.includes('cold') || text.includes('cough')) {
+  if (
+    text.includes('fever') ||
+    text.includes('cold') ||
+    text.includes('cough')
+  ) {
     const types: OutcomeType[] = ['PRESCRIPTION'];
     if (text.includes('high fever') || text.includes('persistent')) {
       types.push('TEST');
@@ -179,30 +324,139 @@ export function decideOutcome(
 
 // ─── Seed Data Constants ────────────────────────────────
 
-export const MEDICINES_DB: { name: string; dosage: string; frequency: string; category: string }[] = [
-  { name: 'Paracetamol 500mg', dosage: '500mg', frequency: 'Twice daily', category: 'Analgesic' },
-  { name: 'Amoxicillin 250mg', dosage: '250mg', frequency: 'Thrice daily', category: 'Antibiotic' },
-  { name: 'Cetirizine 10mg', dosage: '10mg', frequency: 'Once daily', category: 'Antihistamine' },
-  { name: 'Omeprazole 20mg', dosage: '20mg', frequency: 'Once daily (before breakfast)', category: 'Antacid' },
-  { name: 'Ibuprofen 400mg', dosage: '400mg', frequency: 'Twice daily (after meals)', category: 'NSAID' },
-  { name: 'Azithromycin 500mg', dosage: '500mg', frequency: 'Once daily for 3 days', category: 'Antibiotic' },
-  { name: 'Metformin 500mg', dosage: '500mg', frequency: 'Twice daily', category: 'Antidiabetic' },
-  { name: 'Amlodipine 5mg', dosage: '5mg', frequency: 'Once daily', category: 'Antihypertensive' },
-  { name: 'Montelukast 10mg', dosage: '10mg', frequency: 'Once daily at bedtime', category: 'Anti-asthmatic' },
-  { name: 'Pantoprazole 40mg', dosage: '40mg', frequency: 'Once daily (before breakfast)', category: 'PPI' },
-  { name: 'Dolo 650', dosage: '650mg', frequency: 'As needed (max 3/day)', category: 'Analgesic' },
-  { name: 'Vitamin D3 60000 IU', dosage: '60000 IU', frequency: 'Once weekly', category: 'Supplement' },
-  { name: 'Multivitamin', dosage: '1 tablet', frequency: 'Once daily', category: 'Supplement' },
-  { name: 'ORS Packets', dosage: '1 sachet in 1L water', frequency: 'As needed', category: 'Rehydration' },
-  { name: 'Betadine Cream', dosage: 'Apply topically', frequency: 'Twice daily', category: 'Antiseptic' },
-  { name: 'Fluconazole 150mg', dosage: '150mg', frequency: 'Single dose', category: 'Antifungal' },
-  { name: 'Levocetirizine 5mg', dosage: '5mg', frequency: 'Once daily', category: 'Antihistamine' },
-  { name: 'Atorvastatin 10mg', dosage: '10mg', frequency: 'Once daily at bedtime', category: 'Statin' },
-  { name: 'Ranitidine 150mg', dosage: '150mg', frequency: 'Twice daily', category: 'H2 Blocker' },
-  { name: 'Diclofenac Gel', dosage: 'Apply topically', frequency: 'Thrice daily', category: 'Topical NSAID' },
+export const MEDICINES_DB: {
+  name: string;
+  dosage: string;
+  frequency: string;
+  category: string;
+}[] = [
+  {
+    name: 'Paracetamol 500mg',
+    dosage: '500mg',
+    frequency: 'Twice daily',
+    category: 'Analgesic',
+  },
+  {
+    name: 'Amoxicillin 250mg',
+    dosage: '250mg',
+    frequency: 'Thrice daily',
+    category: 'Antibiotic',
+  },
+  {
+    name: 'Cetirizine 10mg',
+    dosage: '10mg',
+    frequency: 'Once daily',
+    category: 'Antihistamine',
+  },
+  {
+    name: 'Omeprazole 20mg',
+    dosage: '20mg',
+    frequency: 'Once daily (before breakfast)',
+    category: 'Antacid',
+  },
+  {
+    name: 'Ibuprofen 400mg',
+    dosage: '400mg',
+    frequency: 'Twice daily (after meals)',
+    category: 'NSAID',
+  },
+  {
+    name: 'Azithromycin 500mg',
+    dosage: '500mg',
+    frequency: 'Once daily for 3 days',
+    category: 'Antibiotic',
+  },
+  {
+    name: 'Metformin 500mg',
+    dosage: '500mg',
+    frequency: 'Twice daily',
+    category: 'Antidiabetic',
+  },
+  {
+    name: 'Amlodipine 5mg',
+    dosage: '5mg',
+    frequency: 'Once daily',
+    category: 'Antihypertensive',
+  },
+  {
+    name: 'Montelukast 10mg',
+    dosage: '10mg',
+    frequency: 'Once daily at bedtime',
+    category: 'Anti-asthmatic',
+  },
+  {
+    name: 'Pantoprazole 40mg',
+    dosage: '40mg',
+    frequency: 'Once daily (before breakfast)',
+    category: 'PPI',
+  },
+  {
+    name: 'Dolo 650',
+    dosage: '650mg',
+    frequency: 'As needed (max 3/day)',
+    category: 'Analgesic',
+  },
+  {
+    name: 'Vitamin D3 60000 IU',
+    dosage: '60000 IU',
+    frequency: 'Once weekly',
+    category: 'Supplement',
+  },
+  {
+    name: 'Multivitamin',
+    dosage: '1 tablet',
+    frequency: 'Once daily',
+    category: 'Supplement',
+  },
+  {
+    name: 'ORS Packets',
+    dosage: '1 sachet in 1L water',
+    frequency: 'As needed',
+    category: 'Rehydration',
+  },
+  {
+    name: 'Betadine Cream',
+    dosage: 'Apply topically',
+    frequency: 'Twice daily',
+    category: 'Antiseptic',
+  },
+  {
+    name: 'Fluconazole 150mg',
+    dosage: '150mg',
+    frequency: 'Single dose',
+    category: 'Antifungal',
+  },
+  {
+    name: 'Levocetirizine 5mg',
+    dosage: '5mg',
+    frequency: 'Once daily',
+    category: 'Antihistamine',
+  },
+  {
+    name: 'Atorvastatin 10mg',
+    dosage: '10mg',
+    frequency: 'Once daily at bedtime',
+    category: 'Statin',
+  },
+  {
+    name: 'Ranitidine 150mg',
+    dosage: '150mg',
+    frequency: 'Twice daily',
+    category: 'H2 Blocker',
+  },
+  {
+    name: 'Diclofenac Gel',
+    dosage: 'Apply topically',
+    frequency: 'Thrice daily',
+    category: 'Topical NSAID',
+  },
 ];
 
-export const DIAGNOSTIC_TESTS: { name: string; type: string; duration: string }[] = [
+export const DIAGNOSTIC_TESTS: {
+  name: string;
+  type: string;
+  duration: string;
+}[] = [
   { name: 'Complete Blood Count (CBC)', type: 'Blood', duration: '2 hours' },
   { name: 'Blood Sugar (Fasting)', type: 'Blood', duration: '1 hour' },
   { name: 'Blood Sugar (PP)', type: 'Blood', duration: '1 hour' },
@@ -226,21 +480,43 @@ export const DIAGNOSTIC_TESTS: { name: string; type: string; duration: string }[
 /**
  * Get recommended medicines for a specialty/symptoms combo.
  */
-export function getRecommendedMedicines(specialty: string, symptomsText: string): typeof MEDICINES_DB {
+export function getRecommendedMedicines(
+  specialty: string,
+  symptomsText: string,
+): typeof MEDICINES_DB {
   const text = symptomsText.toLowerCase();
   const meds: typeof MEDICINES_DB = [];
 
-  if (text.includes('fever') || text.includes('pain')) meds.push(MEDICINES_DB[0]); // Paracetamol
-  if (text.includes('infection') || text.includes('bacterial')) meds.push(MEDICINES_DB[1]); // Amoxicillin
-  if (text.includes('allergy') || text.includes('rash') || text.includes('itching')) meds.push(MEDICINES_DB[2]); // Cetirizine
-  if (text.includes('stomach') || text.includes('acid') || text.includes('gastric')) meds.push(MEDICINES_DB[3]); // Omeprazole
-  if (text.includes('joint') || text.includes('muscle') || text.includes('inflammation')) meds.push(MEDICINES_DB[4]); // Ibuprofen
+  if (text.includes('fever') || text.includes('pain'))
+    meds.push(MEDICINES_DB[0]); // Paracetamol
+  if (text.includes('infection') || text.includes('bacterial'))
+    meds.push(MEDICINES_DB[1]); // Amoxicillin
+  if (
+    text.includes('allergy') ||
+    text.includes('rash') ||
+    text.includes('itching')
+  )
+    meds.push(MEDICINES_DB[2]); // Cetirizine
+  if (
+    text.includes('stomach') ||
+    text.includes('acid') ||
+    text.includes('gastric')
+  )
+    meds.push(MEDICINES_DB[3]); // Omeprazole
+  if (
+    text.includes('joint') ||
+    text.includes('muscle') ||
+    text.includes('inflammation')
+  )
+    meds.push(MEDICINES_DB[4]); // Ibuprofen
   if (text.includes('cough') || text.includes('cold') || text.includes('flu')) {
     meds.push(MEDICINES_DB[0]); // Paracetamol
     meds.push(MEDICINES_DB[2]); // Cetirizine
   }
-  if (text.includes('diabetes') || text.includes('sugar')) meds.push(MEDICINES_DB[6]); // Metformin
-  if (text.includes('blood pressure') || text.includes('hypertension')) meds.push(MEDICINES_DB[7]); // Amlodipine
+  if (text.includes('diabetes') || text.includes('sugar'))
+    meds.push(MEDICINES_DB[6]); // Metformin
+  if (text.includes('blood pressure') || text.includes('hypertension'))
+    meds.push(MEDICINES_DB[7]); // Amlodipine
 
   // Ensure at least one medicine
   if (meds.length === 0) {
@@ -249,14 +525,19 @@ export function getRecommendedMedicines(specialty: string, symptomsText: string)
   }
 
   // Deduplicate
-  const unique = meds.filter((m, i, arr) => arr.findIndex((x) => x.name === m.name) === i);
+  const unique = meds.filter(
+    (m, i, arr) => arr.findIndex((x) => x.name === m.name) === i,
+  );
   return unique;
 }
 
 /**
  * Get recommended tests based on symptoms/severity.
  */
-export function getRecommendedTests(symptomsText: string, severity: SeverityLevel): typeof DIAGNOSTIC_TESTS {
+export function getRecommendedTests(
+  symptomsText: string,
+  severity: SeverityLevel,
+): typeof DIAGNOSTIC_TESTS {
   const text = symptomsText.toLowerCase();
   const tests: typeof DIAGNOSTIC_TESTS = [];
 
@@ -276,7 +557,11 @@ export function getRecommendedTests(symptomsText: string, severity: SeverityLeve
     tests.push(DIAGNOSTIC_TESTS[9]); // X-Ray
     tests.push(DIAGNOSTIC_TESTS[10]); // ECG
   }
-  if (text.includes('headache') || text.includes('brain') || text.includes('seizure')) {
+  if (
+    text.includes('headache') ||
+    text.includes('brain') ||
+    text.includes('seizure')
+  ) {
     tests.push(DIAGNOSTIC_TESTS[11]); // MRI Brain
   }
   if (text.includes('stomach') || text.includes('abdomen')) {
@@ -287,6 +572,8 @@ export function getRecommendedTests(symptomsText: string, severity: SeverityLeve
     tests.push(DIAGNOSTIC_TESTS[0]); // Default: CBC
   }
 
-  const unique = tests.filter((t, i, arr) => arr.findIndex((x) => x.name === t.name) === i);
+  const unique = tests.filter(
+    (t, i, arr) => arr.findIndex((x) => x.name === t.name) === i,
+  );
   return unique;
 }

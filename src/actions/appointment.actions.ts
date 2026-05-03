@@ -26,7 +26,8 @@ export class AppointmentActions {
       });
 
       if (!slot) throw new Error('Appointment slot not found');
-      if (slot.is_booked) throw new Error('This slot has already been booked by another patient');
+      if (slot.is_booked)
+        throw new Error('This slot has already been booked by another patient');
 
       // 2. Mark slot as booked
       await tx.doctor_availability.update({
