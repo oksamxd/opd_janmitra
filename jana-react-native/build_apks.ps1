@@ -7,7 +7,7 @@ Write-Host "Starting Jana AI APK Build Process..." -ForegroundColor Cyan
 $env:JAVA_HOME = "C:\Program Files\Java\jdk-21"
 $env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
 $env:PATH = "$env:JAVA_HOME\bin;$env:ANDROID_HOME\platform-tools;$env:ANDROID_HOME\tools;$env:PATH"
-$env:API_URL = "http://192.168.0.100:3005"
+$env:API_URL = "https://demo.janaai.janmitra.net"
 
 Write-Host "Using JAVA_HOME: $env:JAVA_HOME" -ForegroundColor Gray
 

@@ -1,6 +1,6 @@
 import Constants from 'expo-constants';
 
-const apiUrl = Constants.expoConfig?.extra?.apiUrl || Constants.manifest?.extra?.apiUrl || 'http://192.168.0.100:3005';
+const apiUrl = Constants.expoConfig?.extra?.apiUrl || Constants.manifest?.extra?.apiUrl || 'https://demo.janaai.janmitra.net';
 
 const config = {
   apiUrl,

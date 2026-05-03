@@ -36,9 +36,12 @@ module.exports = () => {
       web: {
         favicon: "./assets/favicon.png"
       },
+      experiments: {
+        baseUrl: process.env.WEB_BASE_URL || '/app'
+      },
       extra: {
         appVariant: process.env.APP_VARIANT || 'selector',
-        apiUrl: process.env.API_URL || 'http://192.168.0.100:3005'
+        apiUrl: process.env.API_URL || 'https://demo.janaai.janmitra.net'
       }
     }
   };
