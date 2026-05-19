@@ -47,7 +47,7 @@ export class DoctorController {
     if (!session) throw new Error('Session not found');
 
     const inputs = session.collected_inputs as any;
-    const caseId = inputs['caseId'] as string;
+    const caseId = (inputs['caseId'] as string) || session.case_id;
     let caseData: any = null;
 
     if (caseId) {
@@ -57,12 +57,14 @@ export class DoctorController {
           test_orders: true,
           case_documents: true,
           prescriptions: { include: { items: true } },
+          members: true,
         },
       });
     }
 
     return {
       sessionId: session.session_id,
+      caseId: caseId,
       state: session.opd_state,
       inputs: session.collected_inputs,
       history: session.ai_history,
@@ -95,6 +97,9 @@ export class DoctorController {
     if (!session) throw new Error('Session not found');
 
     const inputs = session.collected_inputs as any;
+    const caseId = body.caseId || inputs.caseId || session.case_id;
+    if (!caseId) throw new Error('No associated Case ID found for this session');
+
     inputs.consultationNote = body.consultationNote;
     inputs.diagnosis = body.diagnosis;
 
@@ -103,17 +108,23 @@ export class DoctorController {
     // Save Prescriptions
     if (body.prescriptions && body.prescriptions.length > 0) {
       const p = await this.outcomeActions.generatePrescription(
-        body.caseId,
+        caseId,
         body.doctorId,
         body.diagnosis,
         body.consultationNote || 'Follow medication.',
-        body.prescriptions.map((p) => ({
-          name: p.medicine,
-          dosage: p.dosage,
-          frequency: p.frequency,
-          duration: p.duration.toString() + ' days',
-          instructions: 'Take after meals',
-        })),
+        body.prescriptions.map((p) => {
+          const durationStr = p.duration ? p.duration.toString().trim() : '5';
+          const durationClean = durationStr.toLowerCase().includes('day') 
+            ? durationStr 
+            : `${durationStr} days`;
+          return {
+            name: p.medicine,
+            dosage: p.dosage,
+            frequency: p.frequency,
+            duration: durationClean,
+            instructions: 'Take after meals',
+          };
+        }),
       );
       inputs.hasPrescription = true;
       inputs.outcomes.prescription = {
@@ -128,7 +139,7 @@ export class DoctorController {
     // Save Tests
     if (body.testOrders && body.testOrders.length > 0) {
       await this.outcomeActions.createTestOrders(
-        body.caseId,
+        caseId,
         body.testOrders.map((t) => ({ name: t, type: 'ROUTINE' })),
       );
       inputs.hasTests = true;
@@ -141,7 +152,7 @@ export class DoctorController {
     // Save Referral
     if (body.referralSpecialty && body.referralSpecialty !== 'None') {
       await this.outcomeActions.createReferral(
-        body.caseId,
+        caseId,
         body.referralSpecialty,
         `Referred from Doctor ${body.doctorId || 'Internal'}`,
       );
@@ -176,14 +187,14 @@ export class DoctorController {
 
     // Fetch the patient's name for personalization
     const caseData = await this.prisma.cases.findUnique({
-      where: { case_id: body.caseId },
+      where: { case_id: caseId },
       include: { members: true },
     });
     const patientName = caseData?.members?.full_name || 'you';
 
     await this.prisma.case_events.create({
       data: {
-        case_id: body.caseId,
+        case_id: caseId,
         event_type: 'DOCTOR_CONSULTATION_SUBMITTED',
         actor_type: 'DOCTOR',
         payload: {

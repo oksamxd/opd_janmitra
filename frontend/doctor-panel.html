@@ -3,69 +3,78 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jana AI | Diagnostic Consultation</title>
+    <title>Jana AI | Doctor Consultation Panel</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
     <style>
+        *, *::before, *::after { box-sizing: border-box; }
+
         :root {
             --primary: #008080;
             --secondary: #00bfa5;
-            --background: #f0f4f4;
-            --card-bg: rgba(255, 255, 255, 0.9);
+            --card-bg: rgba(255,255,255,0.95);
             --text-main: #2c3e50;
             --text-muted: #7f8c8d;
         }
 
-        body {
-            font-family: 'Outfit', sans-serif;
-            background: linear-gradient(135deg, #e0f2f1 0%, #ffffff 100%);
+        html, body {
+            height: 100%;
             margin: 0;
-            display: flex;
-            min-height: 100vh;
-            color: var(--text-main);
-            overflow-x: hidden;
+            overflow: hidden;
         }
 
-        /* Sidebar */
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: linear-gradient(135deg, #e0f2f1 0%, #f8fffe 100%);
+            display: flex;
+            color: var(--text-main);
+        }
+
+        /* ── Sidebar ── */
         .sidebar {
-            width: 320px;
+            width: 300px;
+            flex-shrink: 0;
             background: var(--card-bg);
             backdrop-filter: blur(10px);
-            border-right: 1px solid rgba(0,0,0,0.1);
+            border-right: 1px solid rgba(0,0,0,0.08);
             display: flex;
             flex-direction: column;
-            box-shadow: 2px 0 10px rgba(0,0,0,0.05);
+            height: 100%;
+            box-shadow: 2px 0 12px rgba(0,0,0,0.06);
         }
 
         .sidebar-header {
-            padding: 24px;
-            border-bottom: 1px solid rgba(0,0,0,0.05);
+            padding: 20px;
+            border-bottom: 1px solid rgba(0,0,0,0.06);
+            flex-shrink: 0;
         }
 
         .sidebar-header h1 {
-            font-size: 20px;
-            margin: 0;
+            font-size: 18px;
+            margin: 0 0 2px 0;
             color: var(--primary);
         }
+
+        .sidebar-header p { margin: 0; font-size: 13px; color: var(--text-muted); }
 
         .case-list {
             flex: 1;
             overflow-y: auto;
-            padding: 16px;
+            padding: 12px;
         }
 
         .case-item {
-            padding: 16px;
+            padding: 14px;
             border-radius: 12px;
-            margin-bottom: 12px;
+            margin-bottom: 10px;
             cursor: pointer;
-            transition: all 0.3s ease;
+            transition: all 0.25s ease;
             border: 1px solid transparent;
-            background: #fff;
+            background: #f7fffe;
         }
 
         .case-item:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            box-shadow: 0 4px 12px rgba(0,128,128,0.1);
             border-color: var(--secondary);
         }
 
@@ -74,115 +83,157 @@
             color: white;
         }
 
-        .case-item h3 {
-            margin: 0 0 4px 0;
-            font-size: 16px;
-        }
+        .case-item h3 { margin: 0 0 4px 0; font-size: 15px; }
+        .case-item p  { margin: 0; font-size: 12px; opacity: 0.8; }
 
-        .case-item p {
-            margin: 0;
-            font-size: 13px;
-            opacity: 0.8;
-        }
-
-        /* Main Panel */
+        /* ── Main Panel ── */
         .main-panel {
             flex: 1;
             display: flex;
             flex-direction: column;
-            min-height: 100vh;
+            height: 100%;
+            min-width: 0;
         }
 
         .panel-header {
-            padding: 24px;
-            background: rgba(255,255,255,0.5);
-            border-bottom: 1px solid rgba(0,0,0,0.05);
+            padding: 18px 24px;
+            background: rgba(255,255,255,0.6);
+            border-bottom: 1px solid rgba(0,0,0,0.06);
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-shrink: 0;
         }
+
+        .panel-header h2 { margin: 0; font-size: 18px; }
 
         .panel-content {
             flex: 1;
             overflow-y: auto;
-            padding: 32px;
+            padding: 24px;
             display: flex;
-            gap: 32px;
+            gap: 24px;
         }
 
+        /* ── Welcome State ── */
+        #welcomeState {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-muted);
+            gap: 12px;
+        }
+
+        #welcomeState svg { opacity: 0.25; }
+        #welcomeState h3 { margin: 0; font-size: 20px; }
+        #welcomeState p  { margin: 0; font-size: 14px; }
+
+        /* ── Patient Details Column ── */
         .patient-details {
             flex: 1;
-            max-width: 400px;
+            min-width: 260px;
+            max-width: 360px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
         }
 
+        /* ── Outcome Form Column ── */
         .outcome-form {
             flex: 2;
             background: var(--card-bg);
-            padding: 32px;
-            border-radius: 24px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+            padding: 28px;
+            border-radius: 20px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.07);
         }
 
-        .form-section {
-            margin-bottom: 24px;
-        }
+        .outcome-form h2 { margin-top: 0; color: var(--primary); font-size: 20px; }
+
+        .form-section { margin-bottom: 20px; }
 
         .form-section label {
             display: block;
             font-weight: 600;
-            margin-bottom: 8px;
-            font-size: 14px;
+            margin-bottom: 6px;
+            font-size: 13px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
-        .form-section textarea, .form-section input, .form-section select {
+        .form-section textarea,
+        .form-section input,
+        .form-section select {
             width: 100%;
-            padding: 12px;
-            border: 1px solid rgba(0,0,0,0.1);
+            padding: 10px 12px;
+            border: 1px solid rgba(0,0,0,0.12);
             border-radius: 8px;
             font-family: inherit;
-            box-sizing: border-box;
+            font-size: 14px;
+            background: #fafafa;
+            transition: border-color 0.2s;
         }
 
-        .outcome-form h2 {
-            margin-top: 0;
-            color: var(--primary);
+        .form-section textarea:focus,
+        .form-section input:focus,
+        .form-section select:focus {
+            outline: none;
+            border-color: var(--secondary);
+            background: #fff;
+        }
+
+        .info-card {
+            background: #fff;
+            padding: 14px;
+            border-radius: 12px;
+            font-size: 13px;
+            line-height: 1.6;
+            border: 1px solid rgba(0,0,0,0.06);
+        }
+
+        .info-card-label {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+        }
+
+        .chat-history-box {
+            max-height: 200px;
+            overflow-y: auto;
         }
 
         .btn-submit {
             background: var(--primary);
             color: white;
             border: none;
-            padding: 16px 32px;
+            padding: 14px 24px;
             border-radius: 12px;
             font-weight: 600;
+            font-size: 15px;
             cursor: pointer;
-            transition: all 0.3s ease;
+            transition: all 0.25s ease;
             width: 100%;
         }
 
         .btn-submit:hover {
             background: var(--secondary);
-            transform: scale(1.02);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 18px rgba(0,128,128,0.3);
         }
 
-        /* Utils */
         .badge {
-            padding: 4px 8px;
-            border-radius: 4px;
+            padding: 4px 10px;
+            border-radius: 6px;
             font-size: 11px;
             text-transform: uppercase;
             font-weight: 600;
             background: #e0f2f1;
             color: var(--primary);
-        }
-
-        .empty-state {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100%;
-            color: var(--text-muted);
         }
 
         .prescription-item {
@@ -191,9 +242,13 @@
             margin-bottom: 8px;
         }
 
+        .prescription-item input { flex: 1; }
+        .prescription-item input.med-dose { flex: 0 0 100px; }
+        .prescription-item input.med-dur  { flex: 0 0 100px; }
+
         .state-badge {
             display: inline-block;
-            padding: 2px 6px;
+            padding: 2px 7px;
             border-radius: 4px;
             font-size: 10px;
             font-weight: 600;
@@ -202,18 +257,20 @@
         }
 
         .state-consultation { background: #e3f2fd; color: #1976d2; }
-        .state-test-ready { background: #fff3e0; color: #e65100; border: 1px solid #ffcc80; }
+        .state-test-ready   { background: #fff3e0; color: #e65100; border: 1px solid #ffcc80; }
+
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
     </style>
 </head>
 <body>
     <div class="sidebar">
         <div class="sidebar-header">
-            <h1>Diagnostic Queue</h1>
+            <h1>🩺 Diagnostic Queue</h1>
             <p>Waiting for consultation</p>
         </div>
         <div id="caseList" class="case-list">
-            <!-- Cases will be loaded here -->
-            <div class="empty-state">Loading active queue...</div>
+            <div style="text-align:center; padding:20px; color:var(--text-muted); font-size:13px;">Loading queue...</div>
         </div>
     </div>
 
@@ -223,39 +280,41 @@
             <div id="caseBadge" class="badge" style="display:none">IN PROGRESS</div>
         </div>
 
-        <div id="welcomeState" class="empty-state">
-            <img src="https://via.placeholder.com/150" alt="Consultation" style="opacity: 0.3; margin-bottom: 24px;">
+        <div id="welcomeState">
+            <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="#008080" stroke-width="1.2">
+                <path d="M12 2a5 5 0 1 1 0 10A5 5 0 0 1 12 2zm0 12c-5.33 0-8 2.67-8 4v2h16v-2c0-1.33-2.67-4-8-4z"/>
+                <path d="M9 12v4m6-4v4M7 16h10"/>
+            </svg>
             <h3>Welcome, Doctor</h3>
             <p>Select a patient from the queue to begin the consultation review.</p>
         </div>
 
-        <div id="consultationPanel" class="panel-content" style="display: none;">
+        <div id="consultationPanel" class="panel-content" style="display:none;">
             <div class="patient-details">
-                <div class="form-section">
-                    <label>Reported Symptoms</label>
-                    <div id="symptomsList" style="background:#fff; padding:16px; border-radius:12px; font-size:14px; line-height:1.6;"></div>
+                <div class="info-card-label">Reported Symptoms</div>
+                <div class="info-card">
+                    <div id="symptomsList">—</div>
                 </div>
-                <div class="form-section">
-                    <label>Conversation History</label>
-                    <div id="chatHistory" style="background:#fff; padding:16px; border-radius:12px; font-size:12px; max-height: 300px; overflow-y: auto;"></div>
+
+                <div class="info-card-label" style="margin-top:4px;">Conversation History</div>
+                <div class="info-card chat-history-box">
+                    <div id="chatHistory"></div>
                 </div>
-                <div class="form-section">
-                    <label>Laboratory Reports (Internal)</label>
-                    <div id="labReports" style="background:#e0f7fa; padding:16px; border-radius:12px; font-size:13px; border: 1px dashed var(--primary);">
-                        <p style="color:var(--text-muted); margin:0;">No reports available for this case.</p>
-                    </div>
+
+                <div class="info-card-label" style="margin-top:4px;">Lab Reports</div>
+                <div class="info-card" style="border-left:4px solid var(--primary);">
+                    <div id="labReports"><span style="color:var(--text-muted); font-size:13px;">No reports yet.</span></div>
                 </div>
-                <div class="form-section">
-                    <label>Patient Uploads (External)</label>
-                    <div id="patientUploads" style="background:#fff3e0; padding:16px; border-radius:12px; font-size:13px; border: 1px dashed #e65100;">
-                        <p style="color:var(--text-muted); margin:0;">No patient uploads available.</p>
-                    </div>
+
+                <div class="info-card-label" style="margin-top:4px;">Patient Uploads</div>
+                <div class="info-card" style="border-left:4px solid #e65100;">
+                    <div id="patientUploads"><span style="color:var(--text-muted); font-size:13px;">No uploads.</span></div>
                 </div>
             </div>
 
             <div class="outcome-form">
                 <h2>Clinical Outcomes</h2>
-                
+
                 <div class="form-section">
                     <label>Consultation Note</label>
                     <textarea id="consultationNote" rows="3" placeholder="Summary of the consultation..."></textarea>
@@ -263,7 +322,7 @@
 
                 <div class="form-section">
                     <label>Primary Diagnosis</label>
-                    <input type="text" id="diagnosis" placeholder="Enter diagnosis (e.g. Inflammatory Dermatitis)">
+                    <input type="text" id="diagnosis" placeholder="e.g. Inflammatory Dermatitis">
                 </div>
 
                 <div class="form-section">
@@ -271,10 +330,11 @@
                     <div id="prescriptionList">
                         <div class="prescription-item">
                             <input type="text" placeholder="Medicine" class="med-name">
-                            <input type="text" placeholder="Dosage" class="med-dose" style="width: 100px;">
-                            <input type="text" placeholder="Duration" class="med-dur" style="width: 100px;">
+                            <input type="text" placeholder="Dosage" class="med-dose">
+                            <input type="text" placeholder="Duration" class="med-dur">
                         </div>
                     </div>
+                    <button onclick="addMedRow()" style="margin-top:6px; background:none; border:1px dashed #ccc; border-radius:6px; padding:6px 12px; cursor:pointer; font-size:13px; color:var(--text-muted);">+ Add Medicine</button>
                 </div>
 
                 <div class="form-section">
@@ -290,63 +350,66 @@
                         <option value="Dermatology">Dermatology</option>
                         <option value="Orthopedics">Orthopedics</option>
                         <option value="Neurology">Neurology</option>
+                        <option value="ENT">ENT</option>
+                        <option value="Gastroenterology">Gastroenterology</option>
+                        <option value="Pulmonology">Pulmonology</option>
+                        <option value="Ophthalmology">Ophthalmology</option>
                     </select>
                 </div>
 
-                <button class="btn-submit" onclick="submitCase()">Submit Consultation</button>
+                <button class="btn-submit" onclick="submitCase()">✅ Submit Consultation</button>
             </div>
         </div>
     </div>
 
     <script>
-        // --- API Configuration ---
         function getApiBase(subpath) {
             const stored = localStorage.getItem('JANA_API_URL');
-            const hostname = window.location.hostname;
-            const isLocal = window.location.protocol === 'file:' || hostname === 'localhost' || hostname === '127.0.0.1';
-            
-            // Production URL
-            const PROD_URL = 'https://demo.janaai.janmitra.net';
-            // Local dev fallback
-            const LOCAL_URL = 'http://localhost:3005';
-
-            const base = stored || (isLocal ? LOCAL_URL : PROD_URL);
+            const isLocal = window.location.protocol === 'file:' || ['localhost','127.0.0.1'].includes(window.location.hostname);
+            const base = stored || (isLocal ? 'http://localhost:3005' : 'https://demo.janaai.janmitra.net');
             return `${base}/api/${subpath}`;
         }
 
-
         const API_BASE = getApiBase('doctor');
-        // -------------------------
-
         let currentSessionId = null;
         let activeCase = null;
 
+        function addMedRow() {
+            const list = document.getElementById('prescriptionList');
+            const row = document.createElement('div');
+            row.className = 'prescription-item';
+            row.innerHTML = `
+                <input type="text" placeholder="Medicine" class="med-name">
+                <input type="text" placeholder="Dosage" class="med-dose">
+                <input type="text" placeholder="Duration" class="med-dur">
+            `;
+            list.appendChild(row);
+        }
+
         async function loadQueue() {
             try {
-                const res = await fetch(`${API_BASE}/active-cases`);
+                const res  = await fetch(`${API_BASE}/active-cases`);
                 const cases = await res.json();
-                const list = document.getElementById('caseList');
-                
-                if (cases.length === 0) {
-                    list.innerHTML = '<div class="empty-state">Queue is currently empty.</div>';
+                const list  = document.getElementById('caseList');
+
+                if (!cases.length) {
+                    list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">Queue is currently empty.</div>';
                     return;
                 }
 
                 list.innerHTML = cases.map(c => {
                     const isTestReady = c.state === 'TEST_COMPLETED';
-                    const badgeClass = isTestReady ? 'state-test-ready' : 'state-consultation';
-                    const badgeText = isTestReady ? '📊 Results Ready' : '🩺 Consultation';
-
+                    const badgeClass  = isTestReady ? 'state-test-ready' : 'state-consultation';
+                    const badgeText   = isTestReady ? '📊 Results Ready' : '🩺 Consultation';
                     return `
                         <div class="case-item ${currentSessionId === c.sessionId ? 'active' : ''}" onclick="selectCase('${c.sessionId}')">
-                            <div style="display:flex; justify-content:space-between; align-items:start;">
+                            <div style="display:flex;justify-content:space-between;align-items:flex-start;">
                                 <h3>Patient Case</h3>
                                 <div class="state-badge ${badgeClass}">${badgeText}</div>
                             </div>
-                            <p>${c.inputs.doctorSpecialty || 'General OPD'}</p>
-                            <p style="font-size:11px; margin-top:4px;">${new Date(c.createdAt).toLocaleTimeString()}</p>
-                        </div>
-                    `;
+                            <p>${(c.inputs && c.inputs.doctorSpecialty) || 'General OPD'}</p>
+                            <p style="font-size:11px;margin-top:4px;">${new Date(c.createdAt).toLocaleTimeString()}</p>
+                        </div>`;
                 }).join('');
             } catch (e) {
                 console.error('Queue load failed', e);
@@ -360,60 +423,58 @@
             document.getElementById('caseBadge').style.display = 'block';
 
             try {
-                const res = await fetch(`${API_BASE}/case-details/${id}`);
+                const res  = await fetch(`${API_BASE}/case-details/${id}`);
                 const data = await res.json();
                 activeCase = data;
 
-                document.getElementById('patientName').innerText = `Consultation | Case #${id.slice(-6)}`;
-                document.getElementById('symptomsList').innerText = data.inputs.triageInput || 'No raw symptoms recorded.';
-                
-                const historyHtml = data.history.map(h => `
-                    <div style="margin-bottom:8px; border-bottom:1px solid #eee; padding-bottom:4px">
-                        <strong>${h.role.toUpperCase()}:</strong>
-                        <span>${h.content}</span>
-                    </div>
-                `).join('');
-                document.getElementById('chatHistory').innerHTML = historyHtml;
+                const patientName = (data.case && data.case.members && data.case.members.full_name) || `Case #${id.slice(-6)}`;
+                document.getElementById('patientName').innerText = `Consultation | ${patientName}`;
+                document.getElementById('symptomsList').innerText = (data.inputs && data.inputs.triageInput) || 'No raw symptoms recorded.';
 
-                // Render Lab Reports
-                const reports = data.case?.test_orders?.filter(t => t.status === 'COMPLETED') || [];
-                const labReportsDiv = document.getElementById('labReports');
-                if (reports.length > 0) {
-                    labReportsDiv.innerHTML = reports.map(r => `
-                        <div style="margin-bottom:10px; padding:10px; background:#fff; border-radius:8px; border-left:4px solid var(--primary)">
+                const historyArr = Array.isArray(data.history) ? data.history : [];
+                document.getElementById('chatHistory').innerHTML = historyArr.length
+                    ? historyArr.map(h => `
+                        <div style="margin-bottom:8px;border-bottom:1px solid #eee;padding-bottom:4px;">
+                            <strong>${h.role ? h.role.toUpperCase() : 'MSG'}:</strong>
+                            <span style="font-size:12px;">${h.content || ''}</span>
+                        </div>`).join('')
+                    : '<span style="color:var(--text-muted);font-size:12px;">No history.</span>';
+
+                const reports = (data.case && data.case.test_orders && data.case.test_orders.filter(t => t.status === 'COMPLETED')) || [];
+                document.getElementById('labReports').innerHTML = reports.length
+                    ? reports.map(r => `
+                        <div style="margin-bottom:10px;padding:8px;background:#f0fffe;border-radius:8px;">
                             <strong>${r.test_name}</strong><br>
-                            <span style="font-size:12px; color:var(--text-muted)">Completed: ${new Date(r.completed_at).toLocaleDateString()}</span>
-                            <p style="margin:5px 0 0 0; font-family: monospace;">${r.result?.report || 'Result pending...'}</p>
-                        </div>
-                    `).join('');
-                } else {
-                    labReportsDiv.innerHTML = '<p style="color:var(--text-muted); margin:0;">No reports available for this case.</p>';
-                }
+                            <span style="font-size:11px;color:var(--text-muted);">Completed: ${new Date(r.completed_at).toLocaleDateString()}</span>
+                            <p style="margin:4px 0 0;font-family:monospace;font-size:12px;">${(r.result && r.result.report) || 'Pending...'}</p>
+                        </div>`).join('')
+                    : '<span style="color:var(--text-muted);font-size:13px;">No reports available.</span>';
 
-                // Render Patient Uploads
-                const uploads = data.case?.case_documents || [];
-                const uploadsDiv = document.getElementById('patientUploads');
-                if (uploads.length > 0) {
-                    uploadsDiv.innerHTML = uploads.map(u => `
-                        <div style="margin-bottom:10px; padding:10px; background:#fff; border-radius:8px; border-left:4px solid #e65100; display:flex; justify-content:space-between; align-items:center;">
+                const uploads = (data.case && data.case.case_documents) || [];
+                document.getElementById('patientUploads').innerHTML = uploads.length
+                    ? uploads.map(u => `
+                        <div style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
                             <div>
                                 <strong>${u.document_type}</strong><br>
-                                <span style="font-size:11px; color:var(--text-muted)">Uploaded: ${new Date(u.uploaded_at).toLocaleDateString()}</span>
+                                <span style="font-size:11px;color:var(--text-muted);">${new Date(u.uploaded_at).toLocaleDateString()}</span>
                             </div>
-                            <a href="${getApiBase('media').replace('media', u.file_url.slice(1))}" target="_blank" style="color:#e65100; text-decoration:none; font-weight:bold;">OPEN</a>
-                        </div>
-                    `).join('');
-                } else {
-                    uploadsDiv.innerHTML = '<p style="color:var(--text-muted); margin:0;">No patient uploads available.</p>';
-                }
+                            <a href="${u.file_url}" target="_blank" style="color:#e65100;font-weight:600;text-decoration:none;">OPEN</a>
+                        </div>`).join('')
+                    : '<span style="color:var(--text-muted);font-size:13px;">No uploads.</span>';
 
-                // Reset form
+                // Reset form fields
                 document.getElementById('consultationNote').value = '';
-                document.getElementById('diagnosis').value = '';
-                document.getElementById('testOrders').value = '';
-                document.getElementById('referral').value = 'None';
-                
-                loadQueue(); // Refresh list to show active
+                document.getElementById('diagnosis').value        = '';
+                document.getElementById('testOrders').value       = '';
+                document.getElementById('referral').value         = 'None';
+                document.getElementById('prescriptionList').innerHTML = `
+                    <div class="prescription-item">
+                        <input type="text" placeholder="Medicine" class="med-name">
+                        <input type="text" placeholder="Dosage" class="med-dose">
+                        <input type="text" placeholder="Duration" class="med-dur">
+                    </div>`;
+
+                loadQueue();
             } catch (e) {
                 console.error('Case detail load failed', e);
             }
@@ -422,49 +483,66 @@
         async function submitCase() {
             if (!currentSessionId) return;
 
-            const meds = Array.from(document.querySelectorAll('.prescription-item')).map(item => ({
-                medicine: item.querySelector('.med-name').value,
-                dosage: item.querySelector('.med-dose').value,
-                frequency: 'Twice daily',
-                duration: item.querySelector('.med-dur').value
-            })).filter(m => m.medicine);
+            const meds = Array.from(document.querySelectorAll('.prescription-item')).map(item => {
+                const nameEl = item.querySelector('.med-name');
+                const doseEl = item.querySelector('.med-dose');
+                const durEl = item.querySelector('.med-dur');
+                return {
+                    medicine:  nameEl ? nameEl.value.trim() : '',
+                    dosage:    doseEl ? doseEl.value.trim() : '',
+                    frequency: 'Twice daily',
+                    duration:  durEl ? durEl.value.trim() : ''
+                };
+            }).filter(m => m.medicine);
 
-            const tests = document.getElementById('testOrders').value.split(',').map(t => t.trim()).filter(t => t);
+            const tests = document.getElementById('testOrders').value.split(',').map(t => t.trim()).filter(Boolean);
+
+            const caseId = (activeCase && activeCase.caseId) || 
+                           (activeCase && activeCase.case && activeCase.case.case_id) || 
+                           (activeCase && activeCase.inputs && activeCase.inputs.caseId);
+
+            if (!caseId) {
+                alert('⚠️ Error: Unable to resolve Case ID for this consultation.');
+                return;
+            }
 
             const payload = {
-                caseId: activeCase.inputs.caseId,
-                doctorId: 'DOC-VERIFIED',
-                consultationNote: document.getElementById('consultationNote').value,
-                diagnosis: document.getElementById('diagnosis').value,
-                prescriptions: meds,
-                testOrders: tests,
+                caseId:           caseId,
+                doctorId:         'DOC-VERIFIED',
+                consultationNote: document.getElementById('consultationNote').value.trim(),
+                diagnosis:        document.getElementById('diagnosis').value.trim(),
+                prescriptions:    meds,
+                testOrders:       tests,
                 referralSpecialty: document.getElementById('referral').value
             };
 
             try {
                 const res = await fetch(`${API_BASE}/submit-outcomes/${currentSessionId}`, {
-                    method: 'POST',
+                    method:  'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
+                    body:    JSON.stringify(payload)
                 });
 
                 if (res.ok) {
-                    alert('Consultation submitted successfully! The patient has been notified in chat.');
+                    alert('✅ Consultation submitted! The patient has been notified.');
                     currentSessionId = null;
                     document.getElementById('consultationPanel').style.display = 'none';
-                    document.getElementById('welcomeState').style.display = 'flex';
-                    document.getElementById('caseBadge').style.display = 'none';
+                    document.getElementById('welcomeState').style.display      = 'flex';
+                    document.getElementById('caseBadge').style.display         = 'none';
+                    document.getElementById('patientName').innerText            = 'Select a Patient';
                     loadQueue();
+                } else {
+                    const err = await res.json().catch(() => ({}));
+                    alert('Submission failed: ' + (err.message || res.status));
                 }
             } catch (e) {
                 console.error('Submission failed', e);
-                alert('Failed to submit consultation. Check console.');
+                alert('Network error. Check console.');
             }
         }
 
-        // Initial load
         loadQueue();
-        setInterval(loadQueue, 5000); // Poll every 5 seconds
+        setInterval(loadQueue, 5000);
     </script>
 </body>
 </html>
