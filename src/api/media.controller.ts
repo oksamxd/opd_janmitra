@@ -12,6 +12,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
+import * as fs from 'fs';
 import { PrismaService } from '../prisma.service';
 import type { Response } from 'express';
 import { randomUUID } from 'crypto';
@@ -24,7 +25,15 @@ export class MediaController {
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
-        destination: './public/uploads',
+        destination: (req, file, cb) => {
+          const uploadPath = '/tmp/uploads';
+          try {
+            fs.mkdirSync(uploadPath, { recursive: true });
+          } catch (e) {
+            // ignore if cannot create; Vercel may restrict write access
+          }
+          cb(null, uploadPath);
+        },
         filename: (req, file, cb) => {
           const uniqueSuffix = randomUUID();
           cb(null, `${uniqueSuffix}${extname(file.originalname)}`);
@@ -100,6 +109,7 @@ export class MediaController {
 
   @Get('uploads/:filename')
   async serveFile(@Param('filename') filename: string, @Res() res: Response) {
-    res.sendFile(join(process.cwd(), 'public/uploads', filename));
+    const filePath = join('/tmp/uploads', filename);
+    res.sendFile(filePath);
   }
 }
