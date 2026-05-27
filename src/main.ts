@@ -18,7 +18,9 @@ async function bootstrap() {
     prefix: '/frontend/',
   });
 
-  await app.listen(3005);
+  const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3005;
+  await app.listen(port);
+  console.log(`🚀 Server listening on port ${port}`);
 }
 
 bootstrap();

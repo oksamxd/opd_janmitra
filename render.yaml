@@ -12,8 +12,10 @@ services:
           property: connectionString
       - key: OPENAI_API_KEY
         sync: false # Securely input in Render dashboard
-      - key: PORT
-        value: 3005
+      - key: NODE_OPTIONS
+        value: --max-old-space-size=2048
+
+# Render provides PORT automatically; no need to set it here.
 
 databases:
   - name: opd-janmitra-db
