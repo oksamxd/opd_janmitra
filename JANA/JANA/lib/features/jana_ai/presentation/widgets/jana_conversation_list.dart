@@ -16,6 +16,7 @@ class JanaConversationList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView.builder(
+      physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
       padding: const EdgeInsets.all(JanaSpacing.md),
       itemCount: messages.length,
       itemBuilder: (context, index) {

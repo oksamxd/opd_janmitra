@@ -3,7 +3,9 @@ import '../../domain/models/jana_app_mode.dart';
 import '../../domain/models/jana_message.dart';
 import 'bubbles/jana_text_message_bubble.dart';
 import 'bubbles/user_message_bubble.dart';
+import 'bubbles/jana_janmitra_message_bubble.dart';
 import 'bubbles/jana_transcript_bubble.dart';
+import 'bubbles/jana_milestone_bubble.dart';
 import 'cards/jana_provider_card.dart';
 import 'cards/jana_slot_card.dart';
 import 'cards/jana_case_progress_card.dart';
@@ -31,6 +33,9 @@ class JanaMessageRenderer extends StatelessWidget {
         content = message.sender == 'user'
             ? UserMessageBubble(message: message)
             : JanaTextMessageBubble(message: message);
+        break;
+      case JanaMessageType.janmitra:
+        content = JanaJanmitraMessageBubble(message: message);
         break;
       case JanaMessageType.transcript:
         content = JanaTranscriptBubble(message: message);
@@ -65,6 +70,8 @@ class JanaMessageRenderer extends StatelessWidget {
       case JanaMessageType.taskCard:
         content = JanaTaskCard(payload: message.payload);
         break;
+      case JanaMessageType.milestone:
+        return Center(child: JanaMilestoneBubble(message: message));
     }
 
     final isUser = message.sender == 'user';

@@ -9,6 +9,8 @@ enum JanaMessageType {
   documentCard,
   alertCard,
   taskCard,
+  janmitra,
+  milestone,
 }
 
 class JanaMessage {

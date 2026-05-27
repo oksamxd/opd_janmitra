@@ -6,337 +6,397 @@
     <title>Jana AI | Pharmacy Delivery Panel</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
     <style>
+        *, *::before, *::after { box-sizing: border-box; }
+
         :root {
-            --primary: #27ae60;
-            --secondary: #2ecc71;
-            --background: #f0fff4;
-            --card-bg: rgba(255, 255, 255, 0.9);
-            --text-main: #2c3e50;
-            --text-muted: #7f8c8d;
+            --primary:   #1b7a3e;
+            --secondary: #27ae60;
+            --accent:    #2ecc71;
+            --card-bg:   rgba(255,255,255,0.95);
+            --text-main: #1c2b20;
+            --text-muted:#6c7c6e;
+        }
+
+        html, body {
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
         }
 
         body {
             font-family: 'Outfit', sans-serif;
-            background: linear-gradient(135deg, #f0fff4 0%, #ffffff 100%);
-            margin: 0;
-            display: flex;
-            min-height: 100vh;
+            background: linear-gradient(135deg, #eafaf1 0%, #f8fff9 100%);
             color: var(--text-main);
-            overflow-x: hidden;
+            display: flex;
         }
 
-        /* Sidebar */
+        /* ── Sidebar ── */
         .sidebar {
-            width: 320px;
+            width: 300px;
+            flex-shrink: 0;
             background: var(--card-bg);
             backdrop-filter: blur(10px);
-            border-right: 1px solid rgba(0,0,0,0.1);
+            border-right: 1px solid rgba(0,0,0,0.08);
             display: flex;
             flex-direction: column;
-            box-shadow: 2px 0 10px rgba(0,0,0,0.05);
+            height: 100%;
+            box-shadow: 2px 0 12px rgba(0,0,0,0.05);
         }
 
         .sidebar-header {
-            padding: 24px;
-            border-bottom: 1px solid rgba(0,0,0,0.05);
+            padding: 20px;
+            border-bottom: 1px solid rgba(0,0,0,0.06);
+            flex-shrink: 0;
         }
 
-        .sidebar-header h1 {
-            font-size: 20px;
-            margin: 0;
-            color: var(--primary);
-        }
+        .sidebar-header h1 { font-size: 18px; margin: 0 0 2px; color: var(--primary); }
+        .sidebar-header p  { margin: 0; font-size: 13px; color: var(--text-muted); }
 
         .case-list {
             flex: 1;
             overflow-y: auto;
-            padding: 16px;
+            padding: 12px;
         }
 
         .case-item {
-            padding: 16px;
+            padding: 14px;
             border-radius: 12px;
-            margin-bottom: 12px;
+            margin-bottom: 10px;
             cursor: pointer;
-            transition: all 0.3s ease;
+            transition: all 0.25s ease;
             border: 1px solid transparent;
-            background: #fff;
+            background: #f1faf5;
         }
 
         .case-item:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-            border-color: var(--secondary);
+            box-shadow: 0 4px 12px rgba(39,174,96,0.15);
+            border-color: var(--accent);
         }
 
-        .case-item.active {
-            background: var(--primary);
-            color: white;
-        }
+        .case-item.active { background: var(--primary); color: white; }
+        .case-item h3 { margin: 0 0 4px; font-size: 15px; }
+        .case-item p  { margin: 0; font-size: 12px; opacity: 0.8; }
 
-        .case-item h3 {
-            margin: 0 0 4px 0;
-            font-size: 16px;
-        }
-
-        .case-item p {
-            margin: 0;
-            font-size: 13px;
-            opacity: 0.8;
-        }
-
-        /* Main Panel */
+        /* ── Main Panel ── */
         .main-panel {
             flex: 1;
             display: flex;
             flex-direction: column;
-            min-height: 100vh;
+            height: 100%;
+            min-width: 0;
         }
 
         .panel-header {
-            padding: 24px;
-            background: rgba(255,255,255,0.5);
-            border-bottom: 1px solid rgba(0,0,0,0.05);
+            padding: 18px 24px;
+            background: rgba(255,255,255,0.6);
+            border-bottom: 1px solid rgba(0,0,0,0.06);
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-shrink: 0;
         }
+
+        .panel-header h2 { margin: 0; font-size: 18px; }
 
         .panel-content {
             flex: 1;
             overflow-y: auto;
-            padding: 32px;
+            padding: 24px;
             display: flex;
-            gap: 32px;
+            gap: 24px;
         }
 
+        /* ── Welcome ── */
+        #welcomeState {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            color: var(--text-muted);
+        }
+
+        #welcomeState svg { opacity: 0.25; }
+        #welcomeState h3  { margin: 0; font-size: 20px; }
+        #welcomeState p   { margin: 0; font-size: 14px; }
+
+        /* ── Detail columns ── */
         .patient-details {
             flex: 1;
-            max-width: 400px;
+            min-width: 240px;
+            max-width: 340px;
         }
+
+        .info-card-label {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+        }
+
+        .info-card {
+            background: #fff;
+            padding: 14px;
+            border-radius: 12px;
+            font-size: 13px;
+            line-height: 1.7;
+            border: 1px solid rgba(0,0,0,0.06);
+            margin-bottom: 16px;
+        }
+
+        .med-row {
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
+        .med-row:last-child { border-bottom: none; }
+        .med-row strong { font-size: 14px; }
+        .med-row span   { font-size: 12px; color: var(--text-muted); }
 
         .outcome-form {
             flex: 2;
             background: var(--card-bg);
-            padding: 32px;
-            border-radius: 24px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+            padding: 28px;
+            border-radius: 20px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.07);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
         }
 
-        .form-section {
-            margin-bottom: 24px;
-        }
+        .outcome-form h2 { margin: 0; color: var(--primary); font-size: 20px; }
 
         .form-section label {
             display: block;
             font-weight: 600;
-            margin-bottom: 8px;
-            font-size: 14px;
+            margin-bottom: 6px;
+            font-size: 13px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
-        .form-section textarea, .form-section input, .form-section select {
+        .form-section textarea,
+        .form-section input {
             width: 100%;
-            padding: 12px;
-            border: 1px solid rgba(0,0,0,0.1);
+            padding: 10px 12px;
+            border: 1px solid rgba(0,0,0,0.12);
             border-radius: 8px;
             font-family: inherit;
-            box-sizing: border-box;
+            font-size: 14px;
+            background: #fafffe;
+            transition: border-color 0.2s;
         }
 
-        .outcome-form h2 {
-            margin-top: 0;
+        .form-section textarea:focus,
+        .form-section input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .status-row {
+            display: flex;
+            gap: 10px;
+            margin-top: 4px;
+        }
+
+        .status-pill {
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            background: #eafaf1;
             color: var(--primary);
+            border: 1px solid rgba(39,174,96,0.3);
         }
 
         .btn-submit {
             background: var(--primary);
             color: white;
             border: none;
-            padding: 16px 32px;
+            padding: 14px 24px;
             border-radius: 12px;
             font-weight: 600;
+            font-size: 15px;
             cursor: pointer;
-            transition: all 0.3s ease;
+            transition: all 0.25s ease;
             width: 100%;
+            margin-top: auto;
         }
 
         .btn-submit:hover {
             background: var(--secondary);
-            transform: scale(1.02);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 18px rgba(39,174,96,0.3);
         }
 
-        /* Utils */
         .badge {
-            padding: 4px 8px;
-            border-radius: 4px;
+            padding: 4px 10px;
+            border-radius: 6px;
             font-size: 11px;
             text-transform: uppercase;
             font-weight: 600;
-            background: #e8f5e9;
+            background: #eafaf1;
             color: var(--primary);
         }
 
-        .empty-state {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100%;
-            color: var(--text-muted);
-        }
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
     </style>
 </head>
 <body>
     <div class="sidebar">
         <div class="sidebar-header">
-            <h1>Pharmacy Queue</h1>
-            <p>Pending Deliveries</p>
+            <h1>💊 Pharmacy Queue</h1>
+            <p>Pending prescription deliveries</p>
         </div>
         <div id="caseList" class="case-list">
-            <div class="empty-state">Loading active queue...</div>
+            <div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">Loading queue...</div>
         </div>
     </div>
 
     <div class="main-panel">
         <div class="panel-header">
-            <h2 id="patientName">Select an Order</h2>
-            <div id="caseBadge" class="badge" style="display:none">PROCESSING</div>
+            <h2 id="headerTitle">Select an Order</h2>
+            <div id="caseBadge" class="badge" style="display:none;">PROCESSING</div>
         </div>
 
-        <div id="welcomeState" class="empty-state">
-            <img src="https://via.placeholder.com/150" alt="Medicine Delivery" style="opacity: 0.3; margin-bottom: 24px;">
-            <h3>Welcome</h3>
-            <p>Select a prescription order from the queue to process delivery.</p>
+        <div id="welcomeState">
+            <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="#27ae60" stroke-width="1.2">
+                <rect x="3" y="3" width="18" height="18" rx="3"/>
+                <path d="M9 12h6M12 9v6"/>
+            </svg>
+            <h3>Welcome to Pharmacy</h3>
+            <p>Select a prescription from the queue to process delivery.</p>
         </div>
 
-        <div id="consultationPanel" class="panel-content" style="display: none;">
+        <div id="consultationPanel" class="panel-content" style="display:none;">
             <div class="patient-details">
-                <div class="form-section">
-                    <label>Prescription Details</label>
-                    <div id="medicineList" style="background:#fff; padding:16px; border-radius:12px; font-size:14px; line-height:1.6;">
-                    </div>
+                <div class="info-card-label">Prescription Details</div>
+                <div class="info-card">
+                    <div id="medicineList">—</div>
+                </div>
+
+                <div class="info-card-label">Order Info</div>
+                <div class="info-card">
+                    <div id="orderMeta" style="font-size:13px;color:var(--text-muted);">—</div>
                 </div>
             </div>
 
             <div class="outcome-form">
-                <h2>Process Order</h2>
-                
+                <h2>🚚 Process Delivery</h2>
+
                 <div class="form-section">
                     <label>Delivery Address / Notes</label>
                     <textarea id="deliveryNotes" rows="3" placeholder="Confirm dispatch to patient's address..."></textarea>
                 </div>
 
-                <button class="btn-submit" onclick="submitDelivery()">Dispatch Medicines</button>
+                <div class="status-row">
+                    <div class="status-pill">📦 Ready to Dispatch</div>
+                </div>
+
+                <button class="btn-submit" onclick="submitDelivery()">Dispatch Medicines →</button>
             </div>
         </div>
     </div>
 
     <script>
-        // --- API Configuration ---
         function getApiBase(subpath) {
             const stored = localStorage.getItem('JANA_API_URL');
-            const hostname = window.location.hostname;
-            const isLocal = window.location.protocol === 'file:' || hostname === 'localhost' || hostname === '127.0.0.1';
-            
-            // Production URL
-            const PROD_URL = 'https://demo.janaai.janmitra.net';
-            // Local dev fallback
-            const LOCAL_URL = 'http://localhost:3005';
-
-            const base = stored || (isLocal ? LOCAL_URL : PROD_URL);
+            const isLocal = window.location.protocol === 'file:' || ['localhost','127.0.0.1'].includes(window.location.hostname);
+            const base = stored || (isLocal ? 'http://localhost:3005' : 'https://demo.janaai.janmitra.net');
             return `${base}/api/${subpath}`;
         }
 
-
         const API_BASE = getApiBase('pharmacy');
-        // -------------------------
-
         let currentPrescriptionId = null;
         let activeOrder = null;
 
         async function loadQueue() {
             try {
-                const res = await fetch(`${API_BASE}/active-orders`);
+                const res   = await fetch(`${API_BASE}/active-orders`);
                 const cases = await res.json();
-                const list = document.getElementById('caseList');
-                
-                if (cases.length === 0) {
-                    list.innerHTML = '<div class="empty-state">No pending deliveries.</div>';
+                const list  = document.getElementById('caseList');
+
+                if (!cases.length) {
+                    list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">No pending deliveries.</div>';
                     return;
                 }
 
                 list.innerHTML = cases.map(c => `
-                    <div class="case-item ${currentPrescriptionId === c.prescriptionId ? 'active' : ''}" onclick='selectCase(${JSON.stringify(c)})'>
-                        <h3>Prescription Delivery</h3>
+                    <div class="case-item ${currentPrescriptionId === c.prescriptionId ? 'active' : ''}"
+                         onclick='selectCase(${JSON.stringify(c)})'>
+                        <h3>💊 Prescription Order</h3>
                         <p>ID: #${c.prescriptionId.slice(-6)}</p>
-                        <p style="font-size:11px; margin-top:4px;">${new Date(c.createdAt).toLocaleTimeString()}</p>
-                    </div>
-                `).join('');
-            } catch (e) {
-                console.error('Queue load failed', e);
-            }
+                        <p style="font-size:11px;margin-top:4px;">${new Date(c.createdAt).toLocaleTimeString()}</p>
+                    </div>`).join('');
+            } catch (e) { console.error('Queue load failed', e); }
         }
 
         function selectCase(order) {
             currentPrescriptionId = order.prescriptionId;
             activeOrder = order;
 
-            document.getElementById('welcomeState').style.display = 'none';
+            document.getElementById('welcomeState').style.display      = 'none';
             document.getElementById('consultationPanel').style.display = 'flex';
-            document.getElementById('caseBadge').style.display = 'block';
+            document.getElementById('caseBadge').style.display         = 'block';
+            document.getElementById('headerTitle').innerText           = `Order #${order.prescriptionId.slice(-6)}`;
 
-            document.getElementById('patientName').innerText = `Pharmacy Order | #${order.prescriptionId.slice(-6)}`;
-            
-            const medsHtml = order.items.map(m => `
-                <div style="margin-bottom:8px; border-bottom:1px solid #eee; padding-bottom:4px">
-                    <strong>${m.medicine_name}</strong> - ${m.dosage} (${m.frequency})
-                    <br><span style="font-size: 12px; color: #7f8c8d;">${m.duration} | ${m.instructions}</span>
-                </div>
-            `).join('');
+            const items = order.items || [];
+            document.getElementById('medicineList').innerHTML = items.length
+                ? items.map(m => `
+                    <div class="med-row">
+                        <strong>${m.medicine_name}</strong> — ${m.dosage || '—'}<br>
+                        <span>${m.frequency || ''} ${m.duration ? '| ' + m.duration : ''} ${m.instructions ? '| ' + m.instructions : ''}</span>
+                    </div>`).join('')
+                : '<span style="color:var(--text-muted);">No medicines listed.</span>';
 
-            document.getElementById('medicineList').innerHTML = medsHtml || 'No specific medicines listed.';
-            
-            document.getElementById('deliveryNotes').value = 'Dispatching to patient details on file.';
-            
-            loadQueue(); // Refresh list to show active
+            document.getElementById('orderMeta').innerHTML = `
+                <strong>Created:</strong> ${new Date(order.createdAt).toLocaleString()}<br>
+                <strong>Status:</strong> ${order.status || 'ACTIVE'}<br>
+                <strong>Case ID:</strong> #${(order.caseId || '').slice(-8)}
+            `;
+
+            document.getElementById('deliveryNotes').value = 'Dispatching to patient address on file.';
+            loadQueue();
         }
 
         async function submitDelivery() {
             if (!currentPrescriptionId) return;
 
-            const notes = document.getElementById('deliveryNotes').value;
-
             const payload = {
                 caseId: activeOrder.caseId,
-                notes: notes
+                notes:  document.getElementById('deliveryNotes').value
             };
 
             try {
                 const res = await fetch(`${API_BASE}/dispatch/${currentPrescriptionId}`, {
-                    method: 'POST',
+                    method:  'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
+                    body:    JSON.stringify(payload)
                 });
 
                 if (res.ok) {
-                    alert('Medicines Dispatched!');
+                    alert('✅ Medicines dispatched! Patient notified.');
                     currentPrescriptionId = null;
+                    activeOrder = null;
                     document.getElementById('consultationPanel').style.display = 'none';
-                    document.getElementById('welcomeState').style.display = 'flex';
-                    document.getElementById('caseBadge').style.display = 'none';
+                    document.getElementById('welcomeState').style.display      = 'flex';
+                    document.getElementById('caseBadge').style.display         = 'none';
+                    document.getElementById('headerTitle').innerText           = 'Select an Order';
                     loadQueue();
                 } else {
-                    alert('Failed to process delivery.');
+                    const err = await res.json().catch(() => ({}));
+                    alert('Failed: ' + (err.message || res.status));
                 }
-            } catch (e) {
-                console.error('Submission failed', e);
-                alert('Failed to submit results. Check console.');
-            }
+            } catch (e) { console.error('Dispatch failed', e); alert('Network error. Check console.'); }
         }
 
-        // Initial load
         loadQueue();
-        setInterval(loadQueue, 5000); // Poll every 5 seconds
+        setInterval(loadQueue, 5000);
     </script>
 </body>
 </html>

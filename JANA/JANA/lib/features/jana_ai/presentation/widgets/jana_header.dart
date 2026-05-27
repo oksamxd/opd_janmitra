@@ -4,6 +4,7 @@ import '../theme/jana_colors.dart';
 import '../theme/jana_spacing.dart';
 import '../theme/jana_text_styles.dart';
 import 'jana_animated_logo.dart';
+import 'jana_notification_system.dart';
 
 class JanaHeader extends StatelessWidget {
   final JanaAppMode mode;
@@ -11,6 +12,10 @@ class JanaHeader extends StatelessWidget {
   final String currentLanguage;
   final VoidCallback onToggleSpeaker;
   final Function(String) onLanguageChanged;
+  final String? sessionId;
+  final VoidCallback? onOpenDashboard;
+  final VoidCallback? onRequestHuman;
+  final bool isHumanControlled;
 
   const JanaHeader({
     Key? key,
@@ -19,6 +24,10 @@ class JanaHeader extends StatelessWidget {
     required this.currentLanguage,
     required this.onToggleSpeaker,
     required this.onLanguageChanged,
+    this.sessionId,
+    this.onOpenDashboard,
+    this.onRequestHuman,
+    this.isHumanControlled = false,
   }) : super(key: key);
 
   @override
@@ -35,6 +44,7 @@ class JanaHeader extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
+          // Logo + Title
           Row(
             children: [
               JanaAnimatedLogo(size: 44),
@@ -53,8 +63,19 @@ class JanaHeader extends StatelessWidget {
               ),
             ],
           ),
+
+          // Actions row
           Row(
             children: [
+              // Appointment Dashboard
+              if (onOpenDashboard != null)
+                IconButton(
+                  icon: const Icon(Icons.calendar_month_outlined),
+                  color: JanaColors.primaryTeal,
+                  onPressed: onOpenDashboard,
+                  tooltip: 'My Appointments',
+                ),
+
               // Language Switcher
               PopupMenuButton<String>(
                 initialValue: currentLanguage,
@@ -68,6 +89,8 @@ class JanaHeader extends StatelessWidget {
                 ],
               ),
               const SizedBox(width: JanaSpacing.xs),
+
+              // Speaker toggle
               IconButton(
                 icon: Icon(
                   speakerEnabled ? Icons.volume_up : Icons.volume_off,
@@ -76,6 +99,29 @@ class JanaHeader extends StatelessWidget {
                 onPressed: onToggleSpeaker,
                 tooltip: speakerEnabled ? 'Mute' : 'Unmute',
               ),
+
+              // Notification Bell
+              if (sessionId != null)
+                JanaNotificationBell(sessionId: sessionId),
+
+              // Janmitra / Return to AI button
+              if (onRequestHuman != null)
+                Tooltip(
+                  message: isHumanControlled
+                      ? 'Return to Jana AI'
+                      : 'Request Janmitra (Human) Assistance',
+                  child: IconButton(
+                    icon: Icon(
+                      isHumanControlled
+                          ? Icons.smart_toy_outlined
+                          : Icons.support_agent,
+                    ),
+                    color: isHumanControlled
+                        ? JanaColors.primaryTeal
+                        : const Color(0xFFFF9800),
+                    onPressed: onRequestHuman,
+                  ),
+                ),
             ],
           ),
         ],

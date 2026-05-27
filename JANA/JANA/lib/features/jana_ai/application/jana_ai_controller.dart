@@ -3,8 +3,8 @@ import 'dart:convert';
 import 'dart:async';
 import 'package:http/http.dart' as http;
 import 'dart:html' as html;
-import 'dart:js_util' as js_util;
 import 'package:uuid/uuid.dart';
+import 'package:file_picker/file_picker.dart';
 import 'jana_ai_view_state.dart';
 import '../domain/models/jana_message.dart';
 import '../domain/models/jana_voice_state.dart';
@@ -31,6 +31,21 @@ class JanaAiController extends ChangeNotifier {
   final List<Map<String, dynamic>> _eventQueue = [];
   bool _isProcessingQueue = false;
   bool _isFirstSync = true;
+  String? _currentStreamIdentifier;
+
+  // Smart endpoint detection
+  String get baseUrl {
+    final hostname = html.window.location.hostname;
+    final origin = html.window.location.origin;
+
+    // Local dev fallback: If running on localhost, point to NestJS port 3005
+    if (hostname == 'localhost' || hostname == '127.0.0.1') {
+      return 'http://localhost:3005';
+    }
+    
+    // In production, the backend is usually hosted on the same origin or determined by environment
+    return origin;
+  }
 
   JanaAiController(JanaAiViewState state) : _state = state {
     if (_state.sessionId == null) {
@@ -96,7 +111,7 @@ class JanaAiController extends ChangeNotifier {
 
     try {
       final response = await http.post(
-        Uri.parse('/api/jana/message'),
+        Uri.parse('$baseUrl/api/jana/message'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'message': text,
@@ -146,7 +161,7 @@ class JanaAiController extends ChangeNotifier {
         if (_state.speakerEnabled && _audioPlayer != null) {
           final escapedText = Uri.encodeComponent(replyText);
           _audioPlayer!.src =
-              '/api/voice/synthesize?text=${escapedText}';
+              '$baseUrl/api/voice/synthesize?text=${escapedText}';
           _audioPlayer!.autoplay = true;
           _audioPlayer!.play().catchError((e) {
             print('TTS error: $e');
@@ -158,6 +173,11 @@ class JanaAiController extends ChangeNotifier {
         if (stateData != null && stateData['caseId'] != null && _state.activeCaseId != stateData['caseId']) {
           newCaseId = stateData['caseId'] as String;
           _startContextStream(newCaseId);
+        } else if (_state.activeCaseId == null && _state.sessionId != null) {
+          // If no case yet, ensure we are at least streaming from sessionId
+          if (_currentStreamIdentifier != _state.sessionId) {
+            _startContextStream(_state.sessionId!);
+          }
         }
 
         _state = _state.copyWith(
@@ -189,6 +209,64 @@ class JanaAiController extends ChangeNotifier {
     }
   }
 
+  Future<void> uploadFile(PlatformFile file) async {
+    if (file.bytes == null) return;
+    
+    _state = _state.copyWith(voiceState: JanaVoiceState.processing);
+    notifyListeners();
+
+    try {
+      final caseId = _state.activeCaseId ?? 'PENDING_${_state.sessionId}';
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/api/media/upload/$caseId'),
+      );
+      
+      request.files.add(http.MultipartFile.fromBytes(
+        'file',
+        file.bytes!,
+        filename: file.name,
+      ));
+
+      final response = await request.send();
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        final resBody = await response.stream.bytesToString();
+        final data = jsonDecode(resBody);
+        
+        // Add a message bubble for the uploaded file
+        final msg = JanaMessage(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          sender: 'user',
+          type: JanaMessageType.documentCard,
+          text: 'Uploaded: ${file.name}',
+          createdAt: DateTime.now(),
+          payload: {
+            'title': file.name,
+            'date': 'Just now',
+            'status': 'Uploaded',
+            'fileUrl': data['fileUrl'],
+          },
+        );
+        
+        _state = _state.copyWith(
+          messages: [..._state.messages, msg],
+          voiceState: JanaVoiceState.idle,
+        );
+        notifyListeners();
+        
+        // Notify AI about the upload
+        await sendMessage('I have uploaded a document: ${file.name}', hidden: true);
+      } else {
+        _addError('Upload failed (${response.statusCode}). Please try again.');
+      }
+    } catch (e) {
+      _addError('Network error during upload: $e');
+    } finally {
+      _state = _state.copyWith(voiceState: JanaVoiceState.idle);
+      notifyListeners();
+    }
+  }
+
   // ─── OPTION SELECTED ─────────────────────────────────────────────────────
 
   void selectOption(JanaOption option) {
@@ -211,6 +289,12 @@ class JanaAiController extends ChangeNotifier {
 
   Future<void> startVoice() async {
     try {
+      // Security Check: getUserMedia requires HTTPS or localhost
+      if (html.window.isSecureContext == false && html.window.location.hostname != 'localhost') {
+        _addError('Voice input requires a secure connection (HTTPS). Please contact your administrator.');
+        return;
+      }
+
       _state = _state.copyWith(voiceState: JanaVoiceState.listening);
       notifyListeners();
 
@@ -222,13 +306,21 @@ class JanaAiController extends ChangeNotifier {
       _audioChunks = [];
 
       _mediaRecorder!.addEventListener('dataavailable', (html.Event event) {
-        final blob = js_util.getProperty(event, 'data') as html.Blob?;
-        if (blob != null && blob.size > 0) _audioChunks.add(blob);
+        // Access the blob via JS dynamic property access (dart:html compatible)
+        final dynamic jsEvent = event;
+        final blob = (jsEvent as dynamic).data;
+        if (blob != null) {
+          try {
+            final htmlBlob = blob as html.Blob;
+            if (htmlBlob.size > 0) _audioChunks.add(htmlBlob);
+          } catch (_) {}
+        }
       });
 
       _mediaRecorder!.start(200);
     } catch (e) {
       print('Mic error: $e');
+      _addError('Could not access microphone. Ensure permissions are granted and you are on a secure (HTTPS) connection.');
       _state = _state.copyWith(voiceState: JanaVoiceState.idle);
       notifyListeners();
     }
@@ -263,7 +355,7 @@ class JanaAiController extends ChangeNotifier {
       await reader.onLoadEnd.first;
       final bytes = reader.result as List<int>;
 
-      final uri = Uri.parse('/api/voice/transcribe');
+      final uri = Uri.parse('$baseUrl/api/voice/transcribe');
       final request = http.MultipartRequest('POST', uri);
       request.files.add(http.MultipartFile.fromBytes('audio', bytes, filename: 'recording.webm'));
 
@@ -310,20 +402,69 @@ class JanaAiController extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ─── JANMITRA HANDOFF ─────────────────────────────────────────────────────
+
+  bool get isHumanControlled => _state.controlledBy == 'HUMAN';
+
+  /// Hand control to a Janmitra associate. Calls backend, updates state.
+  Future<void> requestHandoff() async {
+    final sessionId = _state.sessionId;
+    if (sessionId == null) return;
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/context/handoff/to-human/$sessionId'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'reason': 'User requested human assistance'}),
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        _state = _state.copyWith(
+          controlledBy: 'HUMAN',
+          janmitraData: data['janmitra'] as Map<String, dynamic>?,
+        );
+        notifyListeners();
+      }
+    } catch (e) {
+      _addError('Could not connect to Janmitra. Please try again.');
+    }
+  }
+
+  /// Return control back to Jana AI. Calls backend, updates state.
+  Future<void> returnToAi() async {
+    final sessionId = _state.sessionId;
+    if (sessionId == null) return;
+    try {
+      await http.post(
+        Uri.parse('$baseUrl/api/context/handoff/to-ai/$sessionId'),
+        headers: {'Content-Type': 'application/json'},
+      );
+      _state = _state.copyWith(
+        controlledBy: 'AI',
+        janmitraData: null,
+      );
+      notifyListeners();
+    } catch (e) {
+      _addError('Could not return control to AI. Please try again.');
+    }
+  }
+
   void resumeCase(String caseId) {
     _state = _state.copyWith(activeCaseId: caseId);
     notifyListeners();
     _startContextStream(caseId);
   }
 
-  void _startContextStream(String caseId) {
+  void _startContextStream(String identifier) {
+    if (_currentStreamIdentifier == identifier) return;
+    _currentStreamIdentifier = identifier;
+
     _eventSource?.close();
     _processedEventIds.clear();
     _eventQueue.clear();
     _isProcessingQueue = false;
     _state = _state.copyWith(contextEvents: []);
     _isFirstSync = true;
-    _eventSource = html.EventSource('/api/events/stream/$caseId');
+    _eventSource = html.EventSource('$baseUrl/api/events/stream/$identifier');
     _eventSource!.onMessage.listen((html.MessageEvent event) {
       if (event.data != null) {
         try {
@@ -331,13 +472,15 @@ class JanaAiController extends ChangeNotifier {
           final List<Map<String, dynamic>> incomingEvents = eventsData.map((e) => e as Map<String, dynamic>).toList();
           
           if (_isFirstSync) {
-            // Silence history: Mark all existing events as processed but DO NOT add to UI
+            // Populate history on first sync
+            final List<Map<String, dynamic>> initialEvents = [];
             for (var event in incomingEvents) {
               final String eventId = event['event_id'] ?? event.hashCode.toString();
               _processedEventIds.add(eventId);
+              initialEvents.add(event);
             }
             _isFirstSync = false;
-            // Keep _state.contextEvents empty to only show LIVE events
+            _state = _state.copyWith(contextEvents: initialEvents);
             notifyListeners();
           } else {
             // Handle as live trigger (Drip-Feed)
@@ -372,8 +515,104 @@ class JanaAiController extends ChangeNotifier {
     
     // Take the next event and add it to the state
     final nextEvent = _eventQueue.removeAt(0);
+    final eventType = nextEvent['event_type'] as String?;
+
+    List<JanaMessage> updatedMessages = List.from(_state.messages);
+
+    if (eventType == 'JANMITRA_MESSAGE') {
+      final payload = nextEvent['payload'] as Map<String, dynamic>? ?? {};
+      final msg = JanaMessage(
+        id: nextEvent['event_id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
+        sender: 'janmitra',
+        type: JanaMessageType.janmitra,
+        text: payload['message'] ?? '',
+        createdAt: DateTime.tryParse(nextEvent['created_at'] ?? '') ?? DateTime.now(),
+        payload: payload,
+      );
+      updatedMessages.add(msg);
+    }
+
+    if (eventType == 'AI_RESPONSE') {
+      final payload = nextEvent['payload'] as Map<String, dynamic>? ?? {};
+      final responseType = payload['type'] as String? ?? 'text';
+      final rawOptions = payload['options'] as List<dynamic>? ?? [];
+      final options = rawOptions
+          .whereType<Map<String, dynamic>>()
+          .map((o) => JanaOption.fromJson(o))
+          .toList();
+
+      // Update caseId if present in response
+      final stateData = payload['data'] as Map<String, dynamic>?;
+      if (stateData != null && stateData['caseId'] != null) {
+        final newCaseId = stateData['caseId'] as String;
+        _state = _state.copyWith(activeCaseId: newCaseId);
+        // If caseId changed, restart stream with new caseId
+        Future.microtask(() => _startContextStream(newCaseId));
+      }
+
+      JanaMessageType msgType;
+      switch (responseType) {
+        case 'doctors':
+          msgType = JanaMessageType.providerCard;
+          break;
+        case 'slots':
+          msgType = JanaMessageType.slotCard;
+          break;
+        default:
+          msgType = JanaMessageType.text;
+      }
+
+      final msg = JanaMessage(
+        id: nextEvent['event_id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
+        sender: 'jana',
+        type: msgType,
+        text: payload['message'] ?? '',
+        createdAt: DateTime.tryParse(nextEvent['created_at'] ?? '') ?? DateTime.now(),
+        payload: payload,
+      );
+      updatedMessages.add(msg);
+
+      // Update UI state with new options and type
+      _state = _state.copyWith(
+        pendingOptions: options,
+        pendingType: responseType,
+      );
+    }
+
+    // Handle Clinical Milestones
+    final milestoneTypes = ['CASE_CREATED', 'STEP_COMPLETED', 'TRIAGE_COMPLETED', 'APPOINTMENT_BOOKED', 'TEST_ORDERED'];
+    if (eventType != null && milestoneTypes.contains(eventType)) {
+      final payload = nextEvent['payload'] as Map<String, dynamic>? ?? {};
+      String milestoneTitle = eventType.replaceAll('_', ' ');
+      if (eventType == 'CASE_CREATED') milestoneTitle = '🏥 Case Created';
+      if (eventType == 'TRIAGE_COMPLETED') milestoneTitle = '📋 Triage Completed';
+      if (eventType == 'APPOINTMENT_BOOKED') milestoneTitle = '📅 Appointment Booked';
+
+      final msg = JanaMessage(
+        id: nextEvent['event_id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
+        sender: 'system',
+        type: JanaMessageType.milestone,
+        text: milestoneTitle,
+        createdAt: DateTime.tryParse(nextEvent['created_at'] ?? '') ?? DateTime.now(),
+        payload: {
+          'title': milestoneTitle,
+          ...payload,
+        },
+      );
+      updatedMessages.add(msg);
+    }
+
+    if (eventType == 'HANDOFF') {
+      final title = nextEvent['payload']?['title'] as String? ?? '';
+      final isToAi = title.contains('AI');
+      _state = _state.copyWith(
+        controlledBy: isToAi ? 'AI' : 'HUMAN',
+      );
+    }
+
     _state = _state.copyWith(
-      contextEvents: [..._state.contextEvents, nextEvent]
+      contextEvents: [..._state.contextEvents, nextEvent],
+      messages: updatedMessages,
     );
     notifyListeners();
 

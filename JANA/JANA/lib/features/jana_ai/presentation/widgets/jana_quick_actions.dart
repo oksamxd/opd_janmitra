@@ -7,14 +7,23 @@ import '../theme/jana_spacing.dart';
 
 class JanaQuickActions extends StatelessWidget {
   final JanaAppMode mode;
+  final Function(String)? onActionTriggered;
 
-  const JanaQuickActions({Key? key, required this.mode}) : super(key: key);
+  const JanaQuickActions({
+    Key? key,
+    required this.mode,
+    this.onActionTriggered,
+  }) : super(key: key);
 
   List<JanaQuickActionType> _getActionsForMode() {
     if (mode == JanaAppMode.associate) {
       return [
+        JanaQuickActionType.startMemberCase,
+        JanaQuickActionType.doctorConsultation,
+        JanaQuickActionType.bookAppointment,
+        JanaQuickActionType.medicineDelivery,
+        JanaQuickActionType.diagnosticTest,
         JanaQuickActionType.searchMember,
-        JanaQuickActionType.continueCase,
         JanaQuickActionType.escalateIssue,
       ];
     }
@@ -86,7 +95,8 @@ class JanaQuickActions extends StatelessWidget {
           backgroundColor: JanaColors.softBlue,
           shape: RoundedRectangleBorder(borderRadius: JanaRadius.card),
           onPressed: () {
-            // execute action
+            final label = _getLabel(action);
+            onActionTriggered?.call(label);
           },
         );
       }).toList(),

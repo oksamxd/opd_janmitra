@@ -71,11 +71,29 @@ export class MediaController {
       },
     });
 
+    // ─── Log as case event so it flows through SSE stream ──────────────────
+    await this.prisma.case_events.create({
+      data: {
+        case_id: dbCaseId,
+        session_id: dbSessionId ?? undefined,
+        event_type: 'DOCUMENT_UPLOADED',
+        actor_type: 'JANMITRA',
+        payload: {
+          message: `📎 A document has been uploaded: ${file.originalname}`,
+          documentId: document.document_id,
+          fileUrl: fileUrl,
+          documentType: file.mimetype.startsWith('image/') ? 'IMAGE' : 'PDF',
+          originalName: file.originalname,
+        },
+      },
+    });
+
     return {
       success: true,
       documentId: document.document_id,
       fileUrl: fileUrl,
       mimetype: file.mimetype,
+      originalName: file.originalname,
       linkedTo: dbCaseId ? 'CASE' : 'SESSION',
     };
   }

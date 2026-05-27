@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import '../domain/models/jana_app_mode.dart';
 import '../domain/models/jana_message.dart';
 import '../domain/models/jana_voice_state.dart';
@@ -21,6 +20,10 @@ class JanaAiViewState {
   final List<JanaOption> pendingOptions;
   final String? pendingType; // 'text' | 'options' | 'input' | 'date' | 'slots' | 'doctors'
 
+  // Janmitra Handoff
+  final String controlledBy; // 'AI' | 'HUMAN'
+  final Map<String, dynamic>? janmitraData;
+
   const JanaAiViewState({
     required this.mode,
     this.messages = const [],
@@ -35,6 +38,8 @@ class JanaAiViewState {
     this.contextEvents = const [],
     this.pendingOptions = const [],
     this.pendingType,
+    this.controlledBy = 'AI',
+    this.janmitraData,
   });
 
   JanaAiViewState copyWith({
@@ -51,6 +56,8 @@ class JanaAiViewState {
     List<Map<String, dynamic>>? contextEvents,
     List<JanaOption>? pendingOptions,
     String? pendingType,
+    String? controlledBy,
+    Map<String, dynamic>? janmitraData,
   }) {
     return JanaAiViewState(
       mode: mode ?? this.mode,
@@ -66,6 +73,8 @@ class JanaAiViewState {
       contextEvents: contextEvents ?? this.contextEvents,
       pendingOptions: pendingOptions ?? this.pendingOptions,
       pendingType: pendingType ?? this.pendingType,
+      controlledBy: controlledBy ?? this.controlledBy,
+      janmitraData: janmitraData ?? this.janmitraData,
     );
   }
 }

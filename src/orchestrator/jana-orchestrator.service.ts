@@ -119,15 +119,7 @@ export class JanaOrchestratorService {
   ): Promise<JanaResponse> {
     try {
       let session = await this.loadSession(sessionId);
-      if (!session) {
-        try {
-          session = await this.createSession(sessionId);
-        } catch (e) {
-          // Race condition fallback: If create failed, it's likely already created by a concurrent request
-          session = await this.loadSession(sessionId);
-          if (!session) throw e; // Still null? Then it's a real error
-        }
-      }
+      if (!session) session = await this.createSession(sessionId);
 
       // ─── JANMITRA HANDOFF BYPASS ─────────────────────────────────────────
       // If session is under human control, AI must NOT respond UNLESS it's a Janmitra trigger OR a structured interaction (UUID)

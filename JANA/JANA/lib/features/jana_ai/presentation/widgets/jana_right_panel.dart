@@ -5,11 +5,13 @@ import '../theme/jana_colors.dart';
 import '../theme/jana_spacing.dart';
 import '../theme/jana_text_styles.dart';
 import 'jana_case_summary_card.dart';
+import 'jana_janmitra_panel.dart';
 
 class JanaRightPanel extends StatefulWidget {
   final JanaAiViewState state;
+  final VoidCallback? onReturnToAi;
 
-  const JanaRightPanel({Key? key, required this.state}) : super(key: key);
+  const JanaRightPanel({Key? key, required this.state, this.onReturnToAi}) : super(key: key);
 
   @override
   State<JanaRightPanel> createState() => _JanaRightPanelState();
@@ -42,7 +44,12 @@ class _JanaRightPanelState extends State<JanaRightPanel> {
 
   @override
   Widget build(BuildContext context) {
-    // Sort events by timestamp (latest first for notification feel)
+    // ── JANMITRA MODE: Show associate UI in the right panel ─────────────────
+    if (widget.state.controlledBy == 'HUMAN') {
+      return _buildJanmitraView();
+    }
+
+    // ── AI MODE: Show clinical assistant events ──────────────────────────────
     final events = widget.state.contextEvents.reversed.toList();
 
     return Container(
@@ -73,6 +80,7 @@ class _JanaRightPanelState extends State<JanaRightPanel> {
             child: widget.state.contextEvents.isEmpty
                 ? _buildEmptyPlaceholder()
                 : ListView.builder(
+                    physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
                     controller: _scrollController,
                     padding: const EdgeInsets.all(JanaSpacing.md),
                     itemCount: events.length,
@@ -81,6 +89,66 @@ class _JanaRightPanelState extends State<JanaRightPanel> {
                       final bool isLatest = index == 0;
                       return _buildNotificationItem(event, isLatest);
                     },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Janmitra Associate panel — renders inside the right panel (associate mode).
+  Widget _buildJanmitraView() {
+    final sessionId = widget.state.sessionId;
+    final janmitra = widget.state.janmitraData;
+    final name = janmitra?['fullName'] as String? ?? 'Janmitra Associate';
+    final role = janmitra?['role'] as String? ?? 'Janmitra Associate';
+
+    return Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        color: Color(0xFF0E1A2B),
+        border: Border(left: BorderSide(color: Color(0xFFFF9800), width: 2)),
+      ),
+      child: Column(
+        children: [
+          // Header banner
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: const BoxDecoration(
+              color: Color(0xFF1A1200),
+              border: Border(bottom: BorderSide(color: Color(0xFFFF9800), width: 1)),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.support_agent, color: Color(0xFFFF9800), size: 18),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Janmitra Associate',
+                    style: TextStyle(
+                      color: Color(0xFFFF9800),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          Expanded(
+            child: sessionId != null
+                ? JanaJanmitraPanel(
+                    sessionId: sessionId,
+                    janmitraName: name,
+                    janmitraRole: role,
+                    janmitraData: janmitra,
+                    onReturnToAi: widget.onReturnToAi,
+                  )
+                : const Center(
+                    child: Text('Connecting to associate...',
+                        style: TextStyle(color: Colors.white38)),
                   ),
           ),
         ],
@@ -150,6 +218,17 @@ class _JanaRightPanelState extends State<JanaRightPanel> {
       case 'MEDICINE_DELIVERY_BOOKED':
         title = 'Dispatch Ready';
         icon = Icons.local_shipping;
+        color = Colors.orange;
+        break;
+      case 'STEP_COMPLETED':
+        title = payload['title'] ?? 'Step Complete';
+        details = payload['message'] ?? 'Successfully completed.';
+        icon = Icons.check_circle_outline;
+        color = Colors.green;
+        break;
+      case 'HANDOFF':
+        title = payload['title'] ?? 'Associate Joined';
+        icon = Icons.support_agent;
         color = Colors.orange;
         break;
     }

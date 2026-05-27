@@ -5,7 +5,7 @@ import '../../domain/models/jana_app_mode.dart';
 import '../../domain/models/jana_voice_state.dart';
 import '../theme/jana_colors.dart';
 import '../widgets/jana_header.dart';
-import '../widgets/jana_member_context_strip.dart';
+import '../widgets/jana_member_context_header.dart';
 import '../widgets/jana_greeting_card.dart';
 import '../widgets/jana_conversation_list.dart';
 import '../widgets/jana_voice_dock.dart';
@@ -13,6 +13,7 @@ import '../widgets/jana_text_input_bar.dart';
 import '../widgets/jana_right_panel.dart';
 import '../widgets/jana_left_nav_rail.dart';
 import '../widgets/jana_option_chips.dart';
+import 'jana_appointment_dashboard.dart';
 
 class JanaAiPage extends StatefulWidget {
   final JanaAppMode mode;
@@ -54,6 +55,14 @@ class _JanaAiPageState extends State<JanaAiPage> {
     super.dispose();
   }
 
+  void _openAppointmentDashboard(String memberId) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => JanaAppointmentDashboard(memberId: memberId),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -81,18 +90,37 @@ class _JanaAiPageState extends State<JanaAiPage> {
     );
   }
 
-  Widget _buildMobileLayout(JanaAiViewState state) {
+  Widget _buildChatColumn(JanaAiViewState state) {
     return Column(
       children: [
+        // ── App Header ─────────────────────────────────────
         JanaHeader(
           mode: state.mode,
           speakerEnabled: state.speakerEnabled,
           currentLanguage: state.currentLanguage,
           onToggleSpeaker: _controller.toggleSpeaker,
           onLanguageChanged: _controller.switchLanguage,
+          sessionId: state.sessionId,
+          isHumanControlled: state.controlledBy == 'HUMAN',
+          onOpenDashboard: state.memberId != null
+              ? () => _openAppointmentDashboard(state.memberId!)
+              : null,
+          // Toggling Janmitra = calling the controller's handoff method.
+          // The right panel will auto-switch to Janmitra view via controlledBy state.
+          onRequestHuman: state.sessionId != null
+              ? (state.controlledBy == 'HUMAN'
+                  ? _controller.returnToAi
+                  : _controller.requestHandoff)
+              : null,
         ),
-        if (state.mode == JanaAppMode.associate)
-          JanaMemberContextStrip(memberId: state.memberId),
+
+        // ── ALWAYS VISIBLE: Member Context Header ──────────
+        JanaMemberContextHeader(
+          sessionId: state.sessionId,
+          memberId: state.memberId,
+        ),
+
+        // ── Chat Area ──────────────────────────────────────
         Expanded(
           child: state.messages.isEmpty
               ? JanaGreetingCard(mode: state.mode)
@@ -101,7 +129,8 @@ class _JanaAiPageState extends State<JanaAiPage> {
                   onSendMessage: _controller.sendMessage,
                 ),
         ),
-        // Option chips rendered above input
+
+        // ── Option chips above input ────────────────────────
         if (state.pendingOptions.isNotEmpty || state.pendingType == 'date')
           JanaOptionChips(
             options: state.pendingOptions,
@@ -119,21 +148,103 @@ class _JanaAiPageState extends State<JanaAiPage> {
             }
           },
         ),
-        JanaTextInputBar(onSend: _controller.sendMessage),
+        JanaTextInputBar(
+          onSend: _controller.sendMessage,
+          onAttach: _controller.uploadFile,
+        ),
       ],
+    );
+  }
+
+  Widget _buildMobileLayout(JanaAiViewState state) {
+    // On mobile, show Janmitra banner inline above chat when human-controlled
+    return Column(
+      children: [
+        if (state.controlledBy == 'HUMAN')
+          _buildMobileJanmitraBanner(state),
+        Expanded(child: _buildChatColumn(state)),
+      ],
+    );
+  }
+
+  Widget _buildMobileJanmitraBanner(JanaAiViewState state) {
+    final name = state.janmitraData?['fullName'] as String? ?? 'Janmitra';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: const BoxDecoration(
+        color: Color(0xFF1A1200),
+        border: Border(
+          bottom: BorderSide(color: Color(0xFFFF9800), width: 1.5),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                colors: [Color(0xFFFF9800), Color(0xFFE65100)],
+              ),
+            ),
+            child: Center(
+              child: Text(
+                name.isNotEmpty ? name[0] : 'J',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: const TextStyle(
+                    color: Color(0xFFFF9800),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
+                const Text(
+                  'Janmitra Associate • Managing session',
+                  style: TextStyle(color: Colors.white38, fontSize: 10),
+                ),
+              ],
+            ),
+          ),
+          TextButton.icon(
+            onPressed: _controller.returnToAi,
+            icon: const Icon(Icons.smart_toy_outlined, size: 14),
+            label: const Text('AI', style: TextStyle(fontSize: 11)),
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFF37D2E0),
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildTabletLayout(JanaAiViewState state) {
     return Row(
       children: [
-        Expanded(
-          flex: 2,
-          child: _buildMobileLayout(state),
-        ),
+        Expanded(flex: 2, child: _buildChatColumn(state)),
+        // Right panel auto-switches to Janmitra UI when controlled_by == HUMAN
         Expanded(
           flex: 1,
-          child: JanaRightPanel(state: state),
+          child: JanaRightPanel(
+            state: state,
+            onReturnToAi: _controller.returnToAi,
+          ),
         ),
       ],
     );
@@ -143,13 +254,13 @@ class _JanaAiPageState extends State<JanaAiPage> {
     return Row(
       children: [
         if (state.mode == JanaAppMode.web) const JanaLeftNavRail(),
-        Expanded(
-          flex: 2,
-          child: _buildMobileLayout(state),
-        ),
+        Expanded(flex: 2, child: _buildChatColumn(state)),
         Expanded(
           flex: 1,
-          child: JanaRightPanel(state: state),
+          child: JanaRightPanel(
+            state: state,
+            onReturnToAi: _controller.returnToAi,
+          ),
         ),
       ],
     );

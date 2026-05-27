@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { NestExpressApplication } from '@nestjs/platform-express';
@@ -19,7 +18,7 @@ async function bootstrap() {
     prefix: '/frontend/',
   });
 
-  await app.listen(3005, '0.0.0.0');
+  await app.listen(3005);
 }
 
 bootstrap();

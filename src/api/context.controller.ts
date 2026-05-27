@@ -21,7 +21,10 @@ import {
   Logger,
   NotFoundException,
   BadRequestException,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
+import { join } from 'path';
 import { PrismaService } from '../prisma.service';
 import { AuditLogger } from '../engine/audit-logger';
 import { JanaOrchestratorService } from '../orchestrator/jana-orchestrator.service';
@@ -653,7 +656,14 @@ export class ContextController {
     return { success: true, appointment: updated };
   }
 
-  // ─── 6. JANMITRA ASSOCIATES LIST ─────────────────────────────────────────
+  // ─── 6. JANMITRA DASHBOARD ────────────────────────────────────────────────
+
+  @Get('janmitra/dashboard')
+  async getJanmitraDashboard(@Res() res: Response) {
+    return res.sendFile(join(process.cwd(), 'frontend', 'janmitra-panel.html'));
+  }
+
+  // ─── 7. JANMITRA ASSOCIATES LIST ─────────────────────────────────────────
 
   @Get('janmitra/available')
   async getAvailableJanmitra() {

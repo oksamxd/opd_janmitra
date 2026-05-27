@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'features/jana_ai/domain/models/jana_app_mode.dart';
 import 'features/jana_ai/presentation/pages/jana_ai_page.dart';
+import 'features/jana_ai/presentation/pages/jana_associate_dashboard.dart';
 
 void main() {
   runApp(const MyApp());
@@ -50,9 +51,7 @@ class DemoSelector extends StatelessWidget {
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => const JanaAiPage(
-                    mode: JanaAppMode.associate,
-                  ),
+                  builder: (_) => const JanaAssociateDashboard(),
                 ),
               ),
               child: const Text('Launch Associate Mode'),
