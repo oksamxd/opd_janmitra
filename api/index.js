@@ -3,7 +3,9 @@
 // Boots the compiled NestJS app on first request and reuses it.
 
 const { NestFactory } = require('@nestjs/core');
-const { AppModule } = require('../dist/app.module'); // compiled output
+const path = require('path');
+const appModulePath = path.resolve(__dirname, '..', 'dist', 'src', 'app.module.js');
+const { AppModule } = require(appModulePath); // compiled output
 let cachedHandler = null;
 
 module.exports = async (req, res) => {
