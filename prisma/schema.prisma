@@ -16,13 +16,11 @@ model opd_sessions {
   trigger_history     Json     @default("[]")
   ai_history          Json     @default("[]")
   is_active           Boolean  @default(true)
-  // Janmitra Handoff: 'AI' | 'HUMAN'
-  controlled_by       String   @default("AI")
-  janmitra_id         String?  @db.Uuid
-  // Language persistence per session
-  language_preference String   @default("English")
   created_at          DateTime @default(now())
   updated_at          DateTime @updatedAt
+  controlled_by       String   @default("AI")
+  janmitra_id         String?  @db.Uuid
+  language_preference String   @default("English")
 
   @@index([member_id])
   @@index([is_active])
@@ -81,13 +79,13 @@ model case_services {
 model case_events {
   event_id   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   case_id    String?  @db.Uuid
-  session_id String?  // For early session events before case creation
   service_id String?  @db.Uuid
   event_type String
   actor_type String
   actor_id   String?
   payload    Json?
   created_at DateTime @default(now())
+  session_id String?
 
   @@index([case_id])
   @@index([session_id])
@@ -107,10 +105,10 @@ model case_status_history {
 model case_documents {
   document_id   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   case_id       String?   @db.Uuid
-  session_id    String?   // Temporary anchor before case is created
   file_url      String
   document_type String?
   uploaded_at   DateTime? @default(now())
+  session_id    String?
   cases         cases?    @relation(fields: [case_id], references: [case_id], onDelete: Cascade)
 }
 
@@ -332,18 +330,14 @@ model users {
   password   String
 }
 
-// ─── NOTIFICATION SYSTEM ───────────────────────────────────────────────────
-
 model notifications {
   notification_id String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   member_id       String?   @db.Uuid
   case_id         String?   @db.Uuid
   session_id      String?   @db.Uuid
-  // Types: APPOINTMENT_REMINDER | TEST_REMINDER | FOLLOWUP_REMINDER | DELIVERY_UPDATE | HANDOFF | SYSTEM
   type            String
   title           String
   message         String
-  // Status: PENDING | READ | DISMISSED
   status          String    @default("PENDING")
   scheduled_at    DateTime?
   read_at         DateTime?
@@ -355,24 +349,20 @@ model notifications {
   @@index([case_id])
 }
 
-// ─── OPD VISITS (Follow-up tracking per case) ─────────────────────────────
-
 model opd_visits {
-  visit_id      String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  case_id       String    @db.Uuid
-  visit_type    String    @default("FOLLOWUP")  // INITIAL | FOLLOWUP | SPECIALIST
-  appointment_id String?  @db.Uuid
-  status        String    @default("SCHEDULED") // SCHEDULED | COMPLETED | CANCELLED
-  notes         String?
-  scheduled_at  DateTime?
-  completed_at  DateTime?
-  created_at    DateTime  @default(now())
+  visit_id       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  case_id        String    @db.Uuid
+  visit_type     String    @default("FOLLOWUP")
+  appointment_id String?   @db.Uuid
+  status         String    @default("SCHEDULED")
+  notes          String?
+  scheduled_at   DateTime?
+  completed_at   DateTime?
+  created_at     DateTime  @default(now())
 
   @@index([case_id])
   @@index([status])
 }
-
-// ─── JANMITRA ASSOCIATES ──────────────────────────────────────────────────
 
 model janmitra_associates {
   janmitra_id  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
